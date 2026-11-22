@@ -129,7 +129,7 @@ class DefaultVehicleSession(
     private suspend fun currentSummary(): VehicleSummary = summary ?: identify()
 
     override suspend fun supportedPids(): List<PidDefinition> {
-        val supported = obd.supportedPids()
+        val supported = watchLoss { obd.supportedPids() }
         return StandardPids.all.filter { it.pid in supported && it.pid != 0x01 }
     }
 
@@ -167,16 +167,16 @@ class DefaultVehicleSession(
         _state.value = ConnectionState.Failed("Connection lost: ${e.message ?: "adapter not reachable"}")
     }
 
-    override suspend fun readDtcs(source: DtcSource): List<Dtc> = obd.readDtcs(source)
+    override suspend fun readDtcs(source: DtcSource): List<Dtc> = watchLoss { obd.readDtcs(source) }
 
     override suspend fun readAllEmissionDtcs(): List<Dtc> =
         listOf(DtcSource.STORED, DtcSource.PENDING, DtcSource.PERMANENT).flatMap { src ->
             runCatchingNonCancel { obd.readDtcs(src) } ?: emptyList()
         }
 
-    override suspend fun readiness(): ReadinessReport? = obd.readiness()
+    override suspend fun readiness(): ReadinessReport? = watchLoss { obd.readiness() }
 
-    override suspend fun freezeFrame(): FreezeFrame? = obd.freezeFrame(0)
+    override suspend fun freezeFrame(): FreezeFrame? = watchLoss { obd.freezeFrame(0) }
 
     override suspend fun clearEmissionDtcs(): Boolean {
         val request = MutationRequest(
@@ -235,11 +235,25 @@ class DefaultVehicleSession(
     private fun info(text: String) = traffic.record(TrafficEntry(clock(), Direction.INFO, text))
     private fun error(text: String) = traffic.record(TrafficEntry(clock(), Direction.ERROR, text))
 
+    /** Any operation that hits a lost transport flips the session to Failed, so every screen can show it. */
+    private suspend fun <T> watchLoss(block: suspend () -> T): T = try {
+        block()
+    } catch (e: TransportException) {
+        markLost(e); throw e
+    } catch (e: LinkException) {
+        if (e.cause is TransportException) markLost(e)
+        throw e
+    }
+
     private suspend fun <T> runCatchingNonCancel(block: suspend () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
         throw e
+    } catch (e: TransportException) {
+        markLost(e)
+        null
     } catch (e: Throwable) {
+        if (e.cause is TransportException) markLost(e)
         error("${e::class.simpleName}: ${e.message}")
         null
     }

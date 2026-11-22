@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -204,8 +205,9 @@ class MainViewModel(
         connectJob = viewModelScope.launch {
             // A cancelled attempt may still be closing its socket, and the previous session may still be
             // releasing the adapter: opening it again before that fails on most adapters.
-            previousConnect?.join()
-            releaseJob?.join()
+            // Bounded: a release stuck on a dead socket must never block every later connect.
+            withTimeoutOrNull(RELEASE_WAIT_MS) { previousConnect?.join() }
+            withTimeoutOrNull(RELEASE_WAIT_MS) { releaseJob?.join() }
             val transport = try {
                 transports.create(target)
             } catch (e: CancellationException) {
@@ -227,6 +229,7 @@ class MainViewModel(
                 withContext(io) { s.connect() }
             } catch (e: CancellationException) {
                 stateJob?.cancel()
+                traffic.record(TrafficEntry(clock(), Direction.INFO, "Connection cancelled by the user"))
                 releaseSession(s)
                 throw e
             } catch (e: Throwable) {
@@ -265,6 +268,7 @@ class MainViewModel(
 
     fun cancelConnect() {
         connectJob?.cancel()
+        stateJob?.cancel()
         _state.update { it.copy(connection = ConnectionState.Disconnected) }
     }
 
@@ -294,8 +298,8 @@ class MainViewModel(
         if (session === s) session = null
         val previous = releaseJob
         releaseJob = cleanupScope.launch {
-            previous?.join()
-            runCatching { s.disconnect() }
+            withTimeoutOrNull(RELEASE_WAIT_MS) { previous?.join() }
+            withTimeoutOrNull(RELEASE_WAIT_MS) { runCatching { s.disconnect() } }
         }
     }
 
@@ -601,3 +605,5 @@ class MainViewModel(
         private val OBD_PHYSICAL_RANGE = 0x7E0..0x7E7
     }
 }
+
+private const val RELEASE_WAIT_MS = 5_000L

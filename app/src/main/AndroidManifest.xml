@@ -20,6 +20,8 @@
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
     <application
         android:name=".CarReaderApplication"
         android:allowBackup="false"

@@ -88,9 +88,17 @@ class BluetoothClassicTransport(
             runCatching { candidate.close() }
             throw e
         }
-        val input = candidate.inputStream
+        val input: InputStream
+        val out: java.io.OutputStream
+        try {
+            input = candidate.inputStream
+            out = candidate.outputStream
+        } catch (e: Throwable) {
+            runCatching { candidate.close() }
+            throw e
+        }
         socket = candidate
-        output = candidate.outputStream
+        output = out
         val channel = Channel<ByteArray>(Channel.UNLIMITED)
         incoming = channel
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -103,7 +111,8 @@ class BluetoothClassicTransport(
         while (true) {
             val n = try {
                 input.read(buffer)
-            } catch (e: IOException) {
+            } catch (e: Throwable) {
+                // Any vendor-stack failure ends the connection instead of escaping the reader scope.
                 channel.close(TransportException("Bluetooth read failed: ${e.message}", e))
                 return
             }

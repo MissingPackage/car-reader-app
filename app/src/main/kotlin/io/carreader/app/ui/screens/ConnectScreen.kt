@@ -326,7 +326,7 @@ private fun BluetoothChangesEffect(onChange: () -> Unit) {
             addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         }
         // System broadcasts reach a not-exported receiver; registration can fail in previews, which is harmless.
-        val registered = runCatching { ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }.isSuccess
+        val registered = runCatching { ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED /* system Bluetooth broadcasts are protected */) }.isSuccess
         onDispose { if (registered) runCatching { context.unregisterReceiver(receiver) } }
     }
 }
