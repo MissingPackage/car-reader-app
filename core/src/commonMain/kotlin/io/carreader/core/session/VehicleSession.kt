@@ -59,6 +59,8 @@ interface VehicleSession {
     // Phase 2: brand modules
     /** Probes every ECU the brand knows, emitting a report per ECU as it completes. */
     fun scanEcus(): Flow<EcuReport>
+    /** Notes about a completed scan from the brand module (e.g. unsupported transport). */
+    fun scanNotes(reports: List<EcuReport>): List<String> = emptyList()
     fun brandDataItems(ecu: EcuDescriptor): List<DataItem>
     suspend fun readBrandData(ecu: EcuDescriptor, items: List<DataItem>): List<LiveValue>
     /** Guarded. Throws GuardDenied when blocked. */

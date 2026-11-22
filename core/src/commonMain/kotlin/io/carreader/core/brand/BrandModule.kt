@@ -67,6 +67,9 @@ interface BrandModule {
 
     /** Text for a manufacturer code, null when unknown. */
     fun describeDtc(ecu: EcuDescriptor, code: String, failureType: Int?): String?
+
+    /** Notes about a whole scan (e.g. "this car probably uses VW TP2.0, not supported yet"). */
+    fun scanNotes(vehicle: VehicleContext, reports: List<EcuReport>): List<String> = emptyList()
 }
 
 /** Holds every brand module; the session asks it which one fits the connected car. */

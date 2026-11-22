@@ -70,7 +70,7 @@ abstract class UdsBrandModule(
      * Hook for observations across a whole scan (e.g. "only the engine answered: the car probably uses a
      * protocol this adapter cannot reach"). The session or UI calls it with every report of the scan.
      */
-    open fun scanNotes(vehicle: VehicleContext, reports: List<EcuReport>): List<String> = emptyList()
+    override fun scanNotes(vehicle: VehicleContext, reports: List<EcuReport>): List<String> = emptyList()
 
     final override fun ecus(vehicle: VehicleContext): List<EcuDescriptor> = ecuCatalog(vehicle)
 
