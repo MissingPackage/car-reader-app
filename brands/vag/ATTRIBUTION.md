@@ -3,7 +3,7 @@
 ## OBDb signal sets
 
 The VAG live-data tables in `src/commonMain/kotlin/io/carreader/brands/vag/data/ObdbVolkswagenPassat.kt` and
-`ObdbAudiQ5.kt` are derived from the community database [OBDb](https://github.com/OBDb):
+`ObdbAudiQ5.kt` are derived from the community database [OBDb](https://github.com/OBDb), © OBDb contributors:
 
 | Table | Source repository | File | Commit |
 |---|---|---|---|
