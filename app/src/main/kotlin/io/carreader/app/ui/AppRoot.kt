@@ -141,7 +141,7 @@ private fun MessageDialog(message: UiMessage, vm: MainViewModel) {
         }
         is UiMessage.Error -> {
             title = stringResource(R.string.error_title)
-            body = { Text(message.text, style = MaterialTheme.typography.bodyLarge) }
+            body = { Text(CoreText.message(message.text), style = MaterialTheme.typography.bodyLarge) }
         }
     }
     AlertDialog(

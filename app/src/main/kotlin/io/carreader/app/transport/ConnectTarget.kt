@@ -7,7 +7,11 @@ enum class DemoCar { PASSAT, Q5 }
 
 /** What the user picked on the connect screen. */
 sealed interface ConnectTarget {
-    data class BluetoothClassic(val name: String, val address: String) : ConnectTarget
+    /**
+     * [typeUnknown]: Android did not report the device type (often a BLE-only adapter paired in the system
+     * settings); the app tries classic first and suggests the BLE scan when that fails.
+     */
+    data class BluetoothClassic(val name: String, val address: String, val typeUnknown: Boolean = false) : ConnectTarget
     data class Ble(val name: String, val address: String) : ConnectTarget
     data class Wifi(val host: String, val port: Int) : ConnectTarget
     data class Demo(val car: DemoCar) : ConnectTarget
@@ -18,7 +22,8 @@ fun interface TransportProvider {
     fun create(target: ConnectTarget): Transport
 }
 
-enum class DeviceKind { CLASSIC, BLE, DUAL }
+/** [UNKNOWN]: a bonded device whose type Android does not know yet (it has not been seen since boot). */
+enum class DeviceKind { CLASSIC, BLE, DUAL, UNKNOWN }
 
 /** A Bluetooth device shown on the connect screen. */
 data class DeviceEntry(val name: String?, val address: String, val kind: DeviceKind) {

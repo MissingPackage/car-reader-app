@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,6 +42,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
+import io.carreader.app.ui.MainViewModel
+import io.carreader.app.ui.UiState
+import io.carreader.core.session.ConnectionState
 import io.carreader.app.ui.theme.LocalStatusColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -163,3 +168,28 @@ fun EmptyText(text: String) {
 fun FullScreenLoading() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
+
+/**
+ * Shown on every screen of a connected car once the session is no longer connected (adapter unplugged, car
+ * switched off, BLE out of range): the reason, a reconnect to the same adapter, and the way back. Nothing while
+ * connected.
+ */
+@Composable
+fun ConnectionLostBanner(state: UiState, vm: MainViewModel) {
+    if (!state.connectionLost) return
+    val c = state.connection
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        WarningBox(
+            if (c is ConnectionState.Failed) {
+                stringResource(R.string.vehicle_connection_lost_reason, CoreText.message(c.reason.removePrefix(LOST_PREFIX)))
+            } else {
+                stringResource(R.string.vehicle_connection_lost)
+            },
+        )
+        if (state.target != null) BigButton(stringResource(R.string.vehicle_reconnect), icon = Icons.Filled.Refresh, onClick = vm::reconnect)
+        OutlinedButton(onClick = vm::disconnect, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.vehicle_back_to_connect)) }
+    }
+}
+
+/** The session's own prefix; the banner already says that the connection was lost. */
+private const val LOST_PREFIX = "Connection lost: "

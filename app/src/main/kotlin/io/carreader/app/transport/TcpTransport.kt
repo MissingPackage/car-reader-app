@@ -3,7 +3,6 @@ package io.carreader.app.transport
 import io.carreader.core.transport.Transport
 import io.carreader.core.transport.TransportException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.InputStream
@@ -11,7 +10,6 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
-import kotlin.coroutines.coroutineContext
 
 /**
  * Wi-Fi ELM327 adapters: a plain TCP socket, by default 192.168.0.10:35000.
@@ -33,15 +31,18 @@ class TcpTransport(
 
     override suspend fun connect() = withContext(Dispatchers.IO) {
         val s = socketFactory()
-        val cancelHandle = coroutineContext.job.invokeOnCompletion { if (it != null) runCatching { s.close() } }
         try {
-            s.tcpNoDelay = true
-            s.connect(InetSocketAddress(host, port), connectTimeoutMs)
+            // Cancelling (the Cancel button) closes the socket, which aborts a connect to an unreachable host.
+            abortOnCancel(abort = s::close) {
+                s.tcpNoDelay = true
+                s.connect(InetSocketAddress(host, port), connectTimeoutMs)
+            }
         } catch (e: IOException) {
             runCatching { s.close() }
             throw TransportException("Cannot reach the Wi-Fi adapter at $host:$port (${e.message})", e)
-        } finally {
-            cancelHandle.dispose()
+        } catch (e: Throwable) {
+            runCatching { s.close() }
+            throw e
         }
         socket = s
         input = s.getInputStream()

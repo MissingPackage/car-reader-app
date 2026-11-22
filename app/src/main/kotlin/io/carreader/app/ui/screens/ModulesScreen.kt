@@ -79,9 +79,10 @@ fun ModulesScreen(state: UiState, vm: MainViewModel) {
                     }
                 }
             }
+            if (state.connectionLost) item { ConnectionLostBanner(state, vm) }
             scan.notes.forEach { note -> item { WarningBox(noteText(note)) } }
             scan.brandNotes.forEach { note -> item { WarningBox(CoreText.brandNote(note)) } }
-            scan.error?.let { err -> item { ErrorText(stringResource(R.string.modules_scan_failed, err), onRetry = vm::startScan) } }
+            scan.error?.let { err -> item { ErrorText(stringResource(R.string.modules_scan_failed, CoreText.message(err)), onRetry = vm::startScan) } }
             if (!scan.running && scan.started && scan.reports.isEmpty() && scan.error == null) {
                 item { EmptyText(stringResource(R.string.modules_none)) }
             }
@@ -113,7 +114,7 @@ private fun noteText(note: ScanNote): String = when (note) {
 private fun EcuRow(report: EcuReport, onClick: (() -> Unit)?) {
     val status = LocalStatusColors.current
     val (icon, tint, label) = when {
-        report.error != null -> Triple(Icons.Filled.ErrorOutline, status.bad, stringResource(R.string.modules_error, report.error.orEmpty()))
+        report.error != null -> Triple(Icons.Filled.ErrorOutline, status.bad, stringResource(R.string.modules_error, CoreText.scanError(report.error.orEmpty())))
         !report.present -> Triple(Icons.Filled.RemoveCircleOutline, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.modules_absent))
         report.dtcs.isNotEmpty() -> Triple(
             Icons.Filled.Warning,
@@ -130,7 +131,7 @@ private fun EcuRow(report: EcuReport, onClick: (() -> Unit)?) {
             Icon(icon, contentDescription = null, tint = tint)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("${report.ecu.code}  ${report.ecu.name}", style = MaterialTheme.typography.titleMedium)
+                Text("${report.ecu.code}  ${CoreText.ecuName(report.ecu)}", style = MaterialTheme.typography.titleMedium)
                 Text(label, style = MaterialTheme.typography.bodyMedium, color = tint)
             }
         }

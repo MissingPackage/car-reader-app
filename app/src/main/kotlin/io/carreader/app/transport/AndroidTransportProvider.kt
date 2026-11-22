@@ -9,17 +9,17 @@ import io.carreader.core.transport.Transport
 import io.carreader.core.transport.TransportException
 import java.net.Socket
 
-class AndroidTransportProvider(context: Context) : TransportProvider {
+class AndroidTransportProvider(context: Context, private val log: TransportLog = TransportLog.None) : TransportProvider {
     private val context = context.applicationContext
 
     override fun create(target: ConnectTarget): Transport = when (target) {
         is ConnectTarget.BluetoothClassic -> {
             val adapter = bluetoothAdapter(context) ?: throw TransportException("Bluetooth is not available on this phone")
-            BluetoothClassicTransport(adapter, adapter.getRemoteDevice(target.address), target.name)
+            BluetoothClassicTransport(adapter, adapter.getRemoteDevice(target.address), target.name, log)
         }
         is ConnectTarget.Ble -> {
             val adapter = bluetoothAdapter(context) ?: throw TransportException("Bluetooth is not available on this phone")
-            BleTransport(context, adapter.getRemoteDevice(target.address), target.name)
+            BleTransport(context, adapter.getRemoteDevice(target.address), target.name, log)
         }
         is ConnectTarget.Wifi -> TcpTransport(target.host, target.port, socketFactory = ::wifiSocket)
         is ConnectTarget.Demo -> DemoTransports.create(target.car)

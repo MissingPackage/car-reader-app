@@ -15,6 +15,8 @@ import io.carreader.app.ui.confirm.DialogConfirmationPort
 import io.carreader.core.brand.EcuDescriptor
 import io.carreader.core.brand.EcuReport
 import io.carreader.core.guard.GuardDenied
+import io.carreader.core.log.Direction
+import io.carreader.core.log.TrafficEntry
 import io.carreader.core.log.RingTrafficLog
 import io.carreader.core.obd2.DtcSource
 import io.carreader.core.obd2.PidDefinition
@@ -30,11 +32,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * The app's single ViewModel: navigation, connection lifecycle, and the state of every screen. It talks to the
@@ -70,6 +76,10 @@ class MainViewModel(
     private var scanJob: Job? = null
     private var bleScanJob: Job? = null
     private var busyJob: Job? = null
+    /** The last adapter release; a new connection waits for it so two transports never hold the adapter. */
+    private var releaseJob: Job? = null
+    /** Live data was running when the app went to the background; resume it when the app comes back. */
+    private var resumeLiveOnForeground = false
 
     // ---------------------------------------------------------------- navigation
 
@@ -102,6 +112,8 @@ class MainViewModel(
 
     private fun leaving(screen: Screen) {
         if (screen == Screen.LiveData) stopLive()
+        // An unfinished scan keeps the bus busy for nothing once the screen is gone; the next visit starts again.
+        if (screen == Screen.Modules) scanJob?.cancel()
         if (screen is Screen.EcuDetail) _state.update { it.copy(ecuDetail = null) }
     }
 
@@ -162,11 +174,19 @@ class MainViewModel(
     fun connect(target: ConnectTarget) {
         if (connectJob?.isActive == true) return
         stopBleScan()
+        // A session that failed mid-way (adapter lost) is still open: release it before the new attempt.
+        stopLive()
+        scanJob?.cancel()
+        busyJob?.cancel()
+        stateJob?.cancel()
+        session?.let(::releaseSession)
+        session = null
         if (target is ConnectTarget.Wifi) {
             settings.wifiHost = target.host
             settings.wifiPort = target.port
         }
-        traffic.clear()
+        // The log is kept across attempts (a failed real adapter, then the demo): only a separator is added.
+        traffic.record(TrafficEntry(clock(), Direction.INFO, sessionSeparator(target)))
         _state.update {
             it.copy(
                 connection = ConnectionState.Connecting(""),
@@ -180,7 +200,12 @@ class MainViewModel(
                 ecuDetail = null,
             )
         }
+        val previousConnect = connectJob
         connectJob = viewModelScope.launch {
+            // A cancelled attempt may still be closing its socket, and the previous session may still be
+            // releasing the adapter: opening it again before that fails on most adapters.
+            previousConnect?.join()
+            releaseJob?.join()
             val transport = try {
                 transports.create(target)
             } catch (e: CancellationException) {
@@ -192,11 +217,16 @@ class MainViewModel(
             val s = sessionFactory(transport)
             session = s
             _state.update { it.copy(transportDescription = transport.description) }
-            stateJob?.cancel()
-            stateJob = launch { s.state.collect { st -> _state.update { it.copy(connection = st) } } }
+            // Outlives this job: after connecting it reports a connection lost mid-session (ConnectionState.Failed).
+            stateJob = viewModelScope.launch {
+                s.state.filterNot { it is ConnectionState.Disconnected }.collect { st ->
+                    if (session === s) _state.update { it.copy(connection = st) }
+                }
+            }
             val result = try {
                 withContext(io) { s.connect() }
             } catch (e: CancellationException) {
+                stateJob?.cancel()
                 releaseSession(s)
                 throw e
             } catch (e: Throwable) {
@@ -212,6 +242,25 @@ class MainViewModel(
                 _state.update { it.copy(connection = failed) }
             }
         }
+    }
+
+    /** After the connection was lost: back to the connect screen and try the same adapter again. */
+    fun reconnect() {
+        val target = _state.value.target ?: return
+        _state.update { it.copy(backStack = listOf(Screen.Connect)) }
+        connect(target)
+    }
+
+    private fun sessionSeparator(target: ConnectTarget): String {
+        val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date(clock()))
+        val what = when (target) {
+            is ConnectTarget.BluetoothClassic -> "Bluetooth classic ${target.name} (${target.address})" +
+                if (target.typeUnknown) ", device type unknown" else ""
+            is ConnectTarget.Ble -> "Bluetooth LE ${target.name} (${target.address})"
+            is ConnectTarget.Wifi -> "Wi-Fi ${target.host}:${target.port}"
+            is ConnectTarget.Demo -> "Demo ${target.car.name}"
+        }
+        return "=== New connection: $what · $date"
     }
 
     fun cancelConnect() {
@@ -243,7 +292,11 @@ class MainViewModel(
 
     private fun releaseSession(s: VehicleSession) {
         if (session === s) session = null
-        cleanupScope.launch { runCatching { s.disconnect() } }
+        val previous = releaseJob
+        releaseJob = cleanupScope.launch {
+            previous?.join()
+            runCatching { s.disconnect() }
+        }
     }
 
     override fun onCleared() {
@@ -320,6 +373,17 @@ class MainViewModel(
         }
     }
 
+    /** The app left the screen (home button, screen off): stop polling the car until it comes back. */
+    fun onAppBackground() {
+        resumeLiveOnForeground = liveJob?.isActive == true
+        if (resumeLiveOnForeground) stopLive()
+    }
+
+    fun onAppForeground() {
+        if (resumeLiveOnForeground && _state.value.screen == Screen.LiveData && _state.value.isConnected) startLive()
+        resumeLiveOnForeground = false
+    }
+
     fun stopLive() {
         liveJob?.cancel()
         liveJob = null
@@ -392,6 +456,7 @@ class MainViewModel(
         val expected = summary?.brand?.let { brand -> runCatching { brand.ecus(summary.context).size }.getOrDefault(0) } ?: 0
         _state.update { it.copy(scan = ScanState(running = true, started = true, expected = expected)) }
         scanJob = viewModelScope.launch {
+            var cancelled = false
             try {
                 s.scanEcus().flowOn(io).collect { report ->
                     _state.update { st ->
@@ -400,20 +465,30 @@ class MainViewModel(
                     }
                 }
             } catch (e: CancellationException) {
+                cancelled = true
                 throw e
             } catch (e: Throwable) {
                 _state.update { it.copy(scan = it.scan.copy(error = describe(e))) }
             } finally {
-                val reports = _state.value.scan.reports
-                val brandNotes = runCatching { s.scanNotes(reports) }.getOrDefault(emptyList())
-                _state.update { st ->
-                    val local = scanNotes(st).let { notes ->
-                        // The brand module's own explanation wins over the app's TP2.0 guess.
-                        if (brandNotes.isNotEmpty()) notes - ScanNote.PROBABLY_TP20 else notes
-                    }
-                    st.copy(scan = st.scan.copy(running = false, notes = local, brandNotes = brandNotes))
+                if (cancelled) {
+                    // Left the screen or disconnected: drop the partial result, the next visit scans again.
+                    _state.update { it.copy(scan = ScanState()) }
+                } else {
+                    finishScan(s)
                 }
             }
+        }
+    }
+
+    private fun finishScan(s: VehicleSession) {
+        val reports = _state.value.scan.reports
+        val brandNotes = runCatching { s.scanNotes(reports) }.getOrDefault(emptyList())
+        _state.update { st ->
+            val local = scanNotes(st).let { notes ->
+                // The brand module's own explanation wins over the app's TP2.0 guess.
+                if (brandNotes.isNotEmpty()) notes - ScanNote.PROBABLY_TP20 else notes
+            }
+            st.copy(scan = st.scan.copy(running = false, notes = local, brandNotes = brandNotes))
         }
     }
 

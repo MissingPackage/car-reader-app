@@ -69,7 +69,8 @@ class AndroidDeviceDiscovery(context: Context) : DeviceDiscovery {
             else -> when (runCatching { type }.getOrDefault(BluetoothDevice.DEVICE_TYPE_UNKNOWN)) {
                 BluetoothDevice.DEVICE_TYPE_LE -> DeviceKind.BLE
                 BluetoothDevice.DEVICE_TYPE_DUAL -> DeviceKind.DUAL
-                else -> DeviceKind.CLASSIC
+                BluetoothDevice.DEVICE_TYPE_CLASSIC -> DeviceKind.CLASSIC
+                else -> DeviceKind.UNKNOWN
             }
         }
         val deviceName = advertisedName ?: runCatching { name }.getOrNull()

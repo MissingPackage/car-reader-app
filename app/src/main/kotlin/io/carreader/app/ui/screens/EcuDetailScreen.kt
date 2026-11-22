@@ -23,10 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.UiState
-import io.carreader.core.uds.FailureTypes
 
 @Composable
 fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
@@ -34,7 +34,7 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
     val detail = state.ecuDetail?.takeIf { it.code == code }
     var askClear by rememberSaveable { mutableStateOf(false) }
     ScreenScaffold(
-        title = report?.let { "${it.ecu.code} ${it.ecu.name}" } ?: code,
+        title = report?.let { CoreText.ecuTitle(it.ecu) } ?: code,
         onBack = { vm.back() },
     ) { padding ->
         if (report == null) {
@@ -46,6 +46,7 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (state.connectionLost) item { ConnectionLostBanner(state, vm) }
             item {
                 Section(title = stringResource(R.string.ecu_identification)) {
                     InfoRow(
@@ -56,7 +57,7 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
                     if (report.identification.isEmpty()) {
                         Text(stringResource(R.string.ecu_no_identification), style = MaterialTheme.typography.bodyMedium)
                     }
-                    report.identification.forEach { (label, value) -> InfoRow(label, value) }
+                    report.identification.forEach { (label, value) -> InfoRow(CoreText.identificationLabel(label), value) }
                 }
             }
 
@@ -65,7 +66,7 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
             if (report.dtcs.isEmpty()) {
                 item { EmptyText(stringResource(R.string.faults_none)) }
             } else {
-                items(report.dtcs, key = { it.code + (it.failureType ?: 0) }) { dtc -> DtcCard(dtc, failureTypeText(dtc.failureType)) }
+                items(report.dtcs, key = { it.code + (it.failureType ?: 0) }) { dtc -> DtcCard(dtc) }
             }
             item {
                 BigButton(
@@ -82,7 +83,7 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
                 item { Text(stringResource(R.string.ecu_data), style = MaterialTheme.typography.titleLarge) }
                 when (val values = detail?.values ?: Loadable.Idle) {
                     Loadable.Idle, Loadable.Loading -> item { Loading() }
-                    is Loadable.Failed -> item { ErrorText(values.message, onRetry = vm::refreshEcuData) }
+                    is Loadable.Failed -> item { ErrorText(CoreText.message(values.message), onRetry = vm::refreshEcuData) }
                     is Loadable.Ready -> item {
                         Section {
                             if (values.value.isEmpty()) Text(stringResource(R.string.ecu_data_none), style = MaterialTheme.typography.bodyMedium)
@@ -103,12 +104,9 @@ fun EcuDetailScreen(code: String, state: UiState, vm: MainViewModel) {
         AlertDialog(
             onDismissRequest = { askClear = false },
             title = { Text(stringResource(R.string.ecu_clear)) },
-            text = { Text(stringResource(R.string.ecu_clear_question, "${report.ecu.code} ${report.ecu.name}")) },
+            text = { Text(stringResource(R.string.ecu_clear_question, CoreText.ecuTitle(report.ecu))) },
             confirmButton = { TextButton(onClick = { askClear = false; vm.clearEcuDtcs() }) { Text(stringResource(R.string.action_continue)) } },
             dismissButton = { TextButton(onClick = { askClear = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
-
-/** ISO 14229 failure-type byte as text (English, from the core table); null keeps the hex code only. */
-fun failureTypeText(ftb: Int?): String? = ftb?.let(FailureTypes::describe)

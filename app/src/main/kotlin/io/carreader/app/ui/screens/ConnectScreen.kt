@@ -1,6 +1,10 @@
 package io.carreader.app.ui.screens
 
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -40,10 +44,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +57,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.carreader.app.R
 import io.carreader.app.transport.BluetoothStatus
 import io.carreader.app.transport.ConnectTarget
@@ -59,6 +67,7 @@ import io.carreader.app.transport.DeviceEntry
 import io.carreader.app.transport.DeviceKind
 import io.carreader.app.transport.DeviceRanking
 import io.carreader.app.transport.Permissions
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.Screen
 import io.carreader.app.ui.UiState
@@ -68,6 +77,7 @@ import io.carreader.core.session.ConnectionState
 fun ConnectScreen(state: UiState, vm: MainViewModel) {
     val context = LocalContext.current
     var hasBluetooth by remember { mutableStateOf(Permissions.hasBluetooth(context)) }
+    var locationOn by remember { mutableStateOf(Permissions.locationEnabled(context)) }
     var askedOnce by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         askedOnce = true
@@ -80,6 +90,16 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
     LaunchedEffect(pairedAllowed) {
         if (pairedAllowed) vm.refreshDevices()
     }
+    // Back from the system settings, the permission screen or the Bluetooth pairing screen: show the new state.
+    LifecycleResumeEffect(Unit) {
+        hasBluetooth = Permissions.hasBluetooth(context)
+        locationOn = Permissions.locationEnabled(context)
+        if (Permissions.canListPaired(context)) vm.refreshDevices()
+        onPauseOrDispose { }
+    }
+    // Bluetooth switched on or off from the quick settings, or an adapter paired, while the screen is visible.
+    BluetoothChangesEffect { if (Permissions.canListPaired(context)) vm.refreshDevices() }
+    val legacyBle = Permissions.bleScanNeedsLocation()
 
     val connecting = state.connection is ConnectionState.Connecting
     val d = state.discovery
@@ -127,8 +147,11 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
                 else -> items(d.paired, key = { "p" + it.address }) { device ->
                     DeviceCard(device, enabled = !connecting) {
                         vm.connect(
-                            if (device.kind == DeviceKind.BLE) ConnectTarget.Ble(device.displayName, device.address)
-                            else ConnectTarget.BluetoothClassic(device.displayName, device.address),
+                            if (device.kind == DeviceKind.BLE) {
+                                ConnectTarget.Ble(device.displayName, device.address)
+                            } else {
+                                ConnectTarget.BluetoothClassic(device.displayName, device.address, typeUnknown = device.kind == DeviceKind.UNKNOWN)
+                            },
                         )
                     }
                 }
@@ -145,6 +168,29 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
             item {
                 Text(stringResource(R.string.connect_ble_hint), style = MaterialTheme.typography.bodySmall)
             }
+            if (legacyBle && !hasBluetooth) {
+                item {
+                    LocationPermissionCard(
+                        askedOnce = askedOnce,
+                        onAllow = { permissionLauncher.launch(Permissions.bluetoothRuntime()) },
+                        onOpenSettings = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                            )
+                        },
+                    )
+                }
+            } else if (legacyBle && !locationOn) {
+                item {
+                    Section {
+                        Text(stringResource(R.string.location_off), style = MaterialTheme.typography.bodyLarge)
+                        OutlinedButton(
+                            onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.location_open_settings)) }
+                    }
+                }
+            }
             item {
                 if (d.scanning) {
                     OutlinedButton(onClick = vm::stopBleScan, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.connect_ble_stop)) }
@@ -152,14 +198,14 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
                     BigButton(
                         stringResource(R.string.connect_ble_scan),
                         icon = Icons.Filled.BluetoothSearching,
-                        enabled = !connecting && d.bluetooth == BluetoothStatus.READY,
+                        enabled = !connecting && d.bluetooth == BluetoothStatus.READY && (!legacyBle || (hasBluetooth && locationOn)),
                     ) {
                         if (Permissions.hasBluetooth(context)) vm.startBleScan()
                         else permissionLauncher.launch(Permissions.bluetoothRuntime())
                     }
                 }
             }
-            d.scanError?.let { err -> item { ErrorText(stringResource(R.string.connect_ble_failed, err)) } }
+            d.scanError?.let { err -> item { ErrorText(stringResource(R.string.connect_ble_failed, CoreText.message(err))) } }
             items(d.scanned, key = { "b" + it.address }) { device ->
                 DeviceCard(device, enabled = !connecting) { vm.connect(ConnectTarget.Ble(device.displayName, device.address)) }
             }
@@ -220,7 +266,7 @@ private fun ConnectionStatusCard(state: UiState, onCancel: () -> Unit) {
                     Text(stringResource(R.string.connect_connecting), style = MaterialTheme.typography.titleMedium)
                 }
                 state.transportDescription?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                if (c.step.isNotBlank()) Text(c.step, style = MaterialTheme.typography.bodyLarge)
+                if (c.step.isNotBlank()) Text(CoreText.message(c.step), style = MaterialTheme.typography.bodyLarge)
                 Text(stringResource(R.string.connect_connecting_hint), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
             }
@@ -228,7 +274,10 @@ private fun ConnectionStatusCard(state: UiState, onCancel: () -> Unit) {
         is ConnectionState.Failed -> Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.connect_failed), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
-                Text(c.reason, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(CoreText.message(c.reason), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
+                if ((state.target as? ConnectTarget.BluetoothClassic)?.typeUnknown == true) {
+                    Text(stringResource(R.string.connect_failed_try_ble), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                }
                 Text(stringResource(R.string.connect_failed_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
@@ -249,6 +298,39 @@ private fun PermissionCard(askedOnce: Boolean, onAllow: () -> Unit, onOpenSettin
     }
 }
 
+/** Android 11 and older: the BLE search needs what the system calls the location permission. */
+@Composable
+private fun LocationPermissionCard(askedOnce: Boolean, onAllow: () -> Unit, onOpenSettings: () -> Unit) {
+    Section(title = stringResource(R.string.perm_location_title)) {
+        Text(stringResource(R.string.perm_location_explanation), style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.perm_no_location_legacy), style = MaterialTheme.typography.bodyMedium)
+        BigButton(stringResource(R.string.perm_location_allow), icon = Icons.Filled.BluetoothSearching, onClick = onAllow)
+        if (askedOnce) {
+            Text(stringResource(R.string.perm_denied), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.perm_open_settings)) }
+        }
+    }
+}
+
+/** Calls [onChange] when Bluetooth is switched on or off, or a device is paired or unpaired. */
+@Composable
+private fun BluetoothChangesEffect(onChange: () -> Unit) {
+    val context = LocalContext.current
+    val latest by rememberUpdatedState(onChange)
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) = latest()
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        }
+        // System broadcasts reach a not-exported receiver; registration can fail in previews, which is harmless.
+        val registered = runCatching { ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }.isSuccess
+        onDispose { if (registered) runCatching { context.unregisterReceiver(receiver) } }
+    }
+}
+
 @Composable
 private fun DeviceCard(device: DeviceEntry, enabled: Boolean, onClick: () -> Unit) {
     val obd = DeviceRanking.looksLikeObd(device.name)
@@ -266,7 +348,7 @@ private fun DeviceCard(device: DeviceEntry, enabled: Boolean, onClick: () -> Uni
                 Text(device.address, style = MaterialTheme.typography.bodyMedium)
                 val kind = when (device.kind) {
                     DeviceKind.BLE -> stringResource(R.string.device_kind_ble)
-                    DeviceKind.CLASSIC, DeviceKind.DUAL -> stringResource(R.string.device_kind_classic)
+                    DeviceKind.CLASSIC, DeviceKind.DUAL, DeviceKind.UNKNOWN -> stringResource(R.string.device_kind_classic)
                 }
                 AssistChip(onClick = onClick, enabled = enabled, label = { Text(if (obd) stringResource(R.string.device_obd, kind) else kind) })
             }

@@ -49,6 +49,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.onAppForeground()
+    }
+
+    override fun onStop() {
+        // No polling the car while nobody looks at the values (home button, screen off, another app on top).
+        viewModel.onAppBackground()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         // Leaving the app for good (back on the connect screen, or swiped away): release the adapter.
         if (isFinishing) viewModel.disconnect()

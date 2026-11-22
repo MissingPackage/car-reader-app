@@ -44,10 +44,11 @@ fun ReadinessScreen(state: UiState, vm: MainViewModel) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (state.connectionLost) item { ConnectionLostBanner(state, vm) }
             item { Text(stringResource(R.string.readiness_hint), style = MaterialTheme.typography.bodyMedium) }
             when (val r = state.readiness) {
                 Loadable.Idle, Loadable.Loading -> item { Loading() }
-                is Loadable.Failed -> item { ErrorText(r.message, onRetry = vm::refreshReadiness) }
+                is Loadable.Failed -> item { ErrorText(CoreText.message(r.message), onRetry = vm::refreshReadiness) }
                 is Loadable.Ready -> {
                     val report = r.value
                     if (report == null) {

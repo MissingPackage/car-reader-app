@@ -1,6 +1,7 @@
 package io.carreader.app
 
 import io.carreader.app.transport.BleUartProfile
+import io.carreader.app.transport.ChannelReader
 import io.carreader.app.transport.BleUartProfile.PROPERTY_NOTIFY
 import io.carreader.app.transport.BleUartProfile.PROPERTY_WRITE
 import io.carreader.app.transport.BleUartProfile.PROPERTY_WRITE_NO_RESPONSE
@@ -11,6 +12,8 @@ import io.carreader.app.transport.DeviceRanking
 import io.carreader.app.transport.GattCharInfo
 import io.carreader.app.transport.GattServiceInfo
 import io.carreader.app.transport.TcpTransport
+import io.carreader.core.transport.TransportException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -116,5 +119,31 @@ class TransportLogicTest {
             t.close()
             echo.join()
         }
+    }
+
+    @Test
+    fun gattPropertiesAreReadableInTheLog() {
+        assertEquals("write-no-response, notify", BleUartProfile.describeProperties(PROPERTY_WRITE_NO_RESPONSE or PROPERTY_NOTIFY))
+        assertEquals("read, write", BleUartProfile.describeProperties(0x02 or PROPERTY_WRITE))
+        assertEquals("0x0", BleUartProfile.describeProperties(0))
+    }
+
+    /** The reader-fed channel behind the Bluetooth classic and BLE transports (finding I3). */
+    @Test
+    fun channelReaderJoinsChunksTimesOutEmptyAndThrowsWhenClosed() = runBlocking {
+        val channel = Channel<ByteArray>(Channel.UNLIMITED)
+        assertArrayEquals(ByteArray(0), ChannelReader.read(channel, 20, "closed"))
+        assertArrayEquals(ByteArray(0), ChannelReader.read(channel, 0, "closed"))
+        channel.trySend("41 0C".toByteArray())
+        channel.trySend(" 1A F8\r>".toByteArray())
+        assertEquals("41 0C 1A F8\r>", String(ChannelReader.read(channel, 100, "closed")))
+        channel.close(TransportException("The Bluetooth adapter closed the connection"))
+        val waiting = runCatching { ChannelReader.read(channel, 100, "closed") }.exceptionOrNull()
+        assertTrue("got $waiting", waiting is TransportException && waiting.message == "The Bluetooth adapter closed the connection")
+        val polling = runCatching { ChannelReader.read(channel, 0, "closed") }.exceptionOrNull()
+        assertTrue("got $polling", polling is TransportException)
+        val plain = Channel<ByteArray>(Channel.UNLIMITED).also { it.close() }
+        val closed = runCatching { ChannelReader.read(plain, 100, "BLE connection closed") }.exceptionOrNull()
+        assertEquals("BLE connection closed", closed?.message)
     }
 }

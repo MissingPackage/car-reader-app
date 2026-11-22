@@ -27,13 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.Screen
 import io.carreader.app.ui.UiState
 import io.carreader.app.ui.theme.LocalStatusColors
 import io.carreader.core.link.AdapterChip
-import io.carreader.core.session.ConnectionState
 import java.util.Locale
 
 @Composable
@@ -49,20 +49,12 @@ fun VehicleScreen(state: UiState, vm: MainViewModel) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.connection !is ConnectionState.Connected) {
-                WarningBox(
-                    when (val c = state.connection) {
-                        is ConnectionState.Failed -> stringResource(R.string.vehicle_connection_lost_reason, c.reason)
-                        else -> stringResource(R.string.vehicle_connection_lost)
-                    },
-                )
-                OutlinedButton(onClick = vm::disconnect) { Text(stringResource(R.string.vehicle_back_to_connect)) }
-            }
+            ConnectionLostBanner(state, vm)
 
             Section(title = stringResource(R.string.vehicle_car)) {
                 when (val s = state.summary) {
                     Loadable.Idle, Loadable.Loading -> Loading(stringResource(R.string.vehicle_identifying))
-                    is Loadable.Failed -> ErrorText(stringResource(R.string.vehicle_identify_failed, s.message), onRetry = vm::loadSummary)
+                    is Loadable.Failed -> ErrorText(stringResource(R.string.vehicle_identify_failed, CoreText.message(s.message)), onRetry = vm::loadSummary)
                     is Loadable.Ready -> {
                         val summary = s.value
                         val manufacturer = summary.context.manufacturer

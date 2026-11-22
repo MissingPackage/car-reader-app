@@ -10,6 +10,7 @@ import io.carreader.app.settings.SettingsRepository
 import io.carreader.app.settings.SharedPreferencesSettings
 import io.carreader.app.transport.AndroidDeviceDiscovery
 import io.carreader.app.transport.AndroidTransportProvider
+import io.carreader.app.transport.TransportLog
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.confirm.DialogConfirmationPort
 import io.carreader.core.guard.ClearOnlyPolicy
@@ -56,7 +57,7 @@ class AppContainer(private val app: Application) {
     }
 
     fun mainViewModel(): MainViewModel = MainViewModel(
-        transports = AndroidTransportProvider(app),
+        transports = AndroidTransportProvider(app, TransportLog.of(traffic, clock)),
         sessionFactory = { transport -> SessionFactory.create(transport, sessionDeps) },
         settings = settings,
         confirmation = confirmation,

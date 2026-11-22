@@ -182,7 +182,7 @@ class PreviewVehicleSession(
             ecu = ecu,
             present = true,
             identification = listOf(
-                "Spare part number" to "5Q0907530${ecu.code}",
+                "Part number" to "5Q0907530${ecu.code}",
                 "Software version" to "0${ecu.code}2",
                 "Hardware number" to "5Q0907530",
                 "System name" to ecu.name.uppercase(),

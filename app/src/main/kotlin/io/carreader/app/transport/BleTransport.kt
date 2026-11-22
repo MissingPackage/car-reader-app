@@ -15,7 +15,6 @@ import io.carreader.core.transport.TransportException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +34,7 @@ class BleTransport(
     private val context: Context,
     private val device: BluetoothDevice,
     private val label: String,
+    private val log: TransportLog = TransportLog.None,
 ) : Transport {
     override val description: String = "$label (${device.address}, BLE)"
 
@@ -45,7 +45,17 @@ class BleTransport(
     @Volatile private var mtu = DEFAULT_MTU
     @Volatile private var incoming = Channel<ByteArray>(Channel.UNLIMITED)
     @Volatile private var connectSignal = CompletableDeferred<Int>()
-    @Volatile private var pending: CompletableDeferred<Int>? = null
+    /** The GATT operation in flight; only its own callback may complete it. */
+    @Volatile private var pending: PendingOp? = null
+
+    private enum class Op { DISCOVER_SERVICES, REQUEST_MTU, WRITE_DESCRIPTOR, WRITE_CHARACTERISTIC }
+
+    private class PendingOp(val op: Op, val signal: CompletableDeferred<Int> = CompletableDeferred())
+
+    private fun complete(op: Op, status: Int) {
+        val p = pending ?: return
+        if (p.op == op) p.signal.complete(status)
+    }
 
     /** Human-readable summary of the selected service, for the traffic log header. */
     var selectedProfile: UartSelection? = null
@@ -58,27 +68,27 @@ class BleTransport(
                     connectSignal.complete(status)
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectSignal.complete(if (status == BluetoothGatt.GATT_SUCCESS) STATUS_DISCONNECTED else status)
-                    pending?.complete(STATUS_DISCONNECTED)
+                    pending?.signal?.complete(STATUS_DISCONNECTED)
                     incoming.close(TransportException("The BLE adapter disconnected (GATT status $status)"))
                 }
             }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            pending?.complete(status)
+            complete(Op.DISCOVER_SERVICES, status)
         }
 
         override fun onMtuChanged(g: BluetoothGatt, newMtu: Int, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) mtu = newMtu
-            pending?.complete(status)
+            complete(Op.REQUEST_MTU, status)
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            pending?.complete(status)
+            complete(Op.WRITE_DESCRIPTOR, status)
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            pending?.complete(status)
+            complete(Op.WRITE_CHARACTERISTIC, status)
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
@@ -99,11 +109,15 @@ class BleTransport(
         repeat(CONNECT_ATTEMPTS) { attempt ->
             try {
                 connectOnce()
+                log.info("BLE connected to ${device.address} on attempt ${attempt + 1} of $CONNECT_ATTEMPTS")
                 return
             } catch (e: RetryableBleException) {
                 lastError = TransportException(e.message ?: "BLE connection failed", e)
                 closeGatt()
-                if (attempt < CONNECT_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
+                if (attempt < CONNECT_ATTEMPTS - 1) {
+                    log.info("BLE attempt ${attempt + 1} failed (${e.message}): retrying in $RETRY_DELAY_MS ms")
+                    delay(RETRY_DELAY_MS)
+                }
             } catch (e: Throwable) {
                 closeGatt()
                 throw e
@@ -125,21 +139,26 @@ class BleTransport(
         if (status != BluetoothGatt.GATT_SUCCESS) throw RetryableBleException("BLE connection failed (GATT status $status)")
 
         delay(SETTLE_MS)
-        val discovered = gattMutex.withLock { operation(DISCOVERY_TIMEOUT_MS) { it.discoverServices() } }
+        val discovered = gattMutex.withLock { operation(Op.DISCOVER_SERVICES, DISCOVERY_TIMEOUT_MS) { it.discoverServices() } }
         if (discovered != BluetoothGatt.GATT_SUCCESS) throw RetryableBleException("BLE service discovery failed (status $discovered)")
 
         val services = g.services.map { s ->
             GattServiceInfo(s.uuid, s.characteristics.map { GattCharInfo(it.uuid, it.properties) })
         }
+        services.forEach { svc ->
+            log.info("BLE service ${svc.uuid}: " + svc.characteristics.joinToString { "${it.uuid} [${BleUartProfile.describeProperties(it.properties)}]" })
+        }
         val selection = BleUartProfile.select(services)
             ?: throw TransportException("No serial (UART) service found on this BLE device: is it an OBD adapter?")
         selectedProfile = selection
+        log.info("BLE UART profile: service ${selection.service}, notify ${selection.notify}, write ${selection.write}")
         val service = g.getService(selection.service)
         val notifyChar = service.getCharacteristic(selection.notify)
         val writable = service.getCharacteristic(selection.write)
 
         // Larger MTU = fewer chunks; failure is harmless (we stay at 23).
-        gattMutex.withLock { operation(MTU_TIMEOUT_MS) { it.requestMtu(REQUESTED_MTU) } }
+        val mtuStatus = gattMutex.withLock { operation(Op.REQUEST_MTU, MTU_TIMEOUT_MS) { it.requestMtu(REQUESTED_MTU) } }
+        log.info("BLE MTU $mtu (requested $REQUESTED_MTU, status $mtuStatus)")
 
         if (!g.setCharacteristicNotification(notifyChar, true)) {
             throw TransportException("Could not enable notifications on the BLE adapter")
@@ -150,7 +169,7 @@ class BleTransport(
             } else {
                 BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
             }
-            val result = gattMutex.withLock { operation(DESCRIPTOR_TIMEOUT_MS) { writeDescriptorCompat(it, cccd, value) } }
+            val result = gattMutex.withLock { operation(Op.WRITE_DESCRIPTOR, DESCRIPTOR_TIMEOUT_MS) { writeDescriptorCompat(it, cccd, value) } }
             if (result != BluetoothGatt.GATT_SUCCESS) {
                 throw TransportException("Could not subscribe to the BLE adapter (status $result)")
             }
@@ -159,21 +178,22 @@ class BleTransport(
         // Prefer write-without-response when offered (what ELM BLE clones expect), else acknowledged writes.
         writeWithResponse = writable.properties and BleUartProfile.PROPERTY_WRITE_NO_RESPONSE == 0
         writeChar = writable
+        log.info("BLE write type: " + if (writeWithResponse) "with response" else "without response")
     }
 
     /**
      * Starts one GATT operation and waits for its callback. Returns the GATT status, [STATUS_NOT_STARTED] when
      * the stack refused to start it (busy), [STATUS_TIMEOUT] when no callback arrived. Call under [gattMutex].
      */
-    private suspend fun operation(timeoutMs: Long, start: (BluetoothGatt) -> Boolean): Int {
+    private suspend fun operation(op: Op, timeoutMs: Long, start: (BluetoothGatt) -> Boolean): Int {
         val g = gatt ?: throw TransportException("Not connected")
-        val signal = CompletableDeferred<Int>()
-        pending = signal
+        val p = PendingOp(op)
+        pending = p
         try {
             if (!start(g)) return STATUS_NOT_STARTED
-            return withTimeoutOrNull(timeoutMs) { signal.await() } ?: STATUS_TIMEOUT
+            return withTimeoutOrNull(timeoutMs) { p.signal.await() } ?: STATUS_TIMEOUT
         } finally {
-            pending = null
+            if (pending === p) pending = null
         }
     }
 
@@ -192,7 +212,7 @@ class BleTransport(
                 val part = data.copyOfRange(offset, end)
                 var attempts = 0
                 while (true) {
-                    val status = operation(if (writeWithResponse) WRITE_ACK_TIMEOUT_MS else WRITE_PACE_TIMEOUT_MS) {
+                    val status = operation(Op.WRITE_CHARACTERISTIC, if (writeWithResponse) WRITE_ACK_TIMEOUT_MS else WRITE_PACE_TIMEOUT_MS) {
                         writeCharacteristicCompat(it, characteristic, part, type)
                     }
                     when {
@@ -208,28 +228,8 @@ class BleTransport(
         }
     }
 
-    override suspend fun read(timeoutMs: Long): ByteArray {
-        val channel = incoming
-        val first: ByteArray = if (timeoutMs <= 0) {
-            val r = channel.tryReceive()
-            r.getOrNull() ?: run {
-                if (r.isClosed) throw (r.exceptionOrNull() ?: TransportException("BLE channel closed"))
-                return ByteArray(0)
-            }
-        } else {
-            try {
-                withTimeoutOrNull(timeoutMs) { channel.receive() } ?: return ByteArray(0)
-            } catch (e: ClosedReceiveChannelException) {
-                throw TransportException("BLE connection closed", e)
-            }
-        }
-        var result = first
-        while (true) {
-            val more = channel.tryReceive().getOrNull() ?: break
-            result += more
-        }
-        return result
-    }
+    override suspend fun read(timeoutMs: Long): ByteArray =
+        ChannelReader.read(incoming, timeoutMs, closedMessage = "BLE connection closed")
 
     override suspend fun close() {
         closeGatt()

@@ -15,6 +15,7 @@ data class UartSelection(val service: UUID, val notify: UUID, val write: UUID)
  * that has a notify (or indicate) characteristic and a writable one.
  */
 object BleUartProfile {
+    const val PROPERTY_READ = 0x02
     const val PROPERTY_WRITE_NO_RESPONSE = 0x04
     const val PROPERTY_WRITE = 0x08
     const val PROPERTY_NOTIFY = 0x10
@@ -42,6 +43,15 @@ object BleUartProfile {
 
     fun canNotify(c: GattCharInfo) = c.properties and (PROPERTY_NOTIFY or PROPERTY_INDICATE) != 0
     fun canWrite(c: GattCharInfo) = c.properties and (PROPERTY_WRITE or PROPERTY_WRITE_NO_RESPONSE) != 0
+
+    /** GATT characteristic properties as text, for the diagnostics log: "read, notify, write-no-response". */
+    fun describeProperties(properties: Int): String = listOfNotNull(
+        "read".takeIf { properties and PROPERTY_READ != 0 },
+        "write-no-response".takeIf { properties and PROPERTY_WRITE_NO_RESPONSE != 0 },
+        "write".takeIf { properties and PROPERTY_WRITE != 0 },
+        "notify".takeIf { properties and PROPERTY_NOTIFY != 0 },
+        "indicate".takeIf { properties and PROPERTY_INDICATE != 0 },
+    ).joinToString(", ").ifEmpty { "0x" + properties.toString(16) }
 
     fun select(services: List<GattServiceInfo>): UartSelection? {
         for (k in known) {

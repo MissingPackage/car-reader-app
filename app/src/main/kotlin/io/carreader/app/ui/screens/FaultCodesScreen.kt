@@ -36,12 +36,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.UiState
 import io.carreader.app.ui.theme.LocalStatusColors
 import io.carreader.core.obd2.Dtc
-import io.carreader.core.obd2.DtcDescriptions
 import io.carreader.core.obd2.DtcSource
 
 private val tabs = listOf(DtcSource.STORED, DtcSource.PENDING, DtcSource.PERMANENT)
@@ -80,10 +80,11 @@ fun FaultCodesScreen(state: UiState, vm: MainViewModel) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (state.connectionLost) item { ConnectionLostBanner(state, vm) }
                 item { Text(sourceHint(tabs[tab]), style = MaterialTheme.typography.bodySmall) }
                 when (val list = faults.dtcs[tabs[tab]] ?: Loadable.Idle) {
                     Loadable.Idle, Loadable.Loading -> item { Loading(stringResource(R.string.faults_reading)) }
-                    is Loadable.Failed -> item { ErrorText(list.message, onRetry = vm::refreshFaults) }
+                    is Loadable.Failed -> item { ErrorText(CoreText.message(list.message), onRetry = vm::refreshFaults) }
                     is Loadable.Ready -> if (list.value.isEmpty()) {
                         item { EmptyText(stringResource(R.string.faults_none)) }
                     } else {
@@ -136,19 +137,30 @@ private fun sourceHint(source: DtcSource): String = when (source) {
     DtcSource.ECU -> ""
 }
 
+/** One fault code. The description is the core's English text, labelled as such where the UI is not English. */
 @Composable
-fun DtcCard(dtc: Dtc, failureTypeText: String? = null) {
+fun DtcCard(dtc: Dtc) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(dtc.code, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                dtc.ecu?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                dtc.ecu?.let { Text(CoreText.ecuLabel(it), style = MaterialTheme.typography.labelMedium) }
             }
-            Text(dtc.description ?: DtcDescriptions.describe(dtc.code) ?: stringResource(R.string.faults_no_description), style = MaterialTheme.typography.bodyLarge)
+            val description = CoreText.dtcDescription(dtc)
+            if (description != null) {
+                val languageNote = stringResource(R.string.dtc_description_english)
+                if (languageNote.isNotEmpty()) {
+                    Text(languageNote, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(description, style = MaterialTheme.typography.bodyLarge)
+            } else {
+                Text(stringResource(R.string.faults_no_description), style = MaterialTheme.typography.bodyLarge)
+            }
             dtc.failureType?.let { ftb ->
                 val hex = "0x%02X".format(ftb)
+                val text = CoreText.failureType(ftb)
                 Text(
-                    stringResource(R.string.dtc_failure_type, if (failureTypeText != null) "$failureTypeText ($hex)" else hex),
+                    stringResource(R.string.dtc_failure_type, if (text != null) "$text ($hex)" else hex),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -173,14 +185,14 @@ private fun FreezeFrameSection(frame: Loadable<io.carreader.core.obd2.FreezeFram
     Section(title = stringResource(R.string.faults_freeze_frame)) {
         when (frame) {
             Loadable.Idle, Loadable.Loading -> Loading()
-            is Loadable.Failed -> ErrorText(frame.message)
+            is Loadable.Failed -> ErrorText(CoreText.message(frame.message))
             is Loadable.Ready -> {
                 val ff = frame.value
                 if (ff == null || ff.values.isEmpty()) {
                     Text(stringResource(R.string.faults_no_freeze_frame), style = MaterialTheme.typography.bodyMedium)
                 } else {
                     ff.triggerDtc?.let { InfoRow(stringResource(R.string.faults_freeze_trigger), it) }
-                    ff.values.forEach { InfoRow(it.name, it.text) }
+                    ff.values.forEach { InfoRow(CoreText.pidName(it.key, it.name), it.text) }
                 }
             }
         }

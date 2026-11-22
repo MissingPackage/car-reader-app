@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.UiState
@@ -55,7 +56,10 @@ fun LiveDataScreen(state: UiState, vm: MainViewModel) {
     ) { padding ->
         val available = live.available
         when {
-            available is Loadable.Failed -> Column(Modifier.padding(padding).padding(16.dp)) { ErrorText(available.message) }
+            available is Loadable.Failed -> Column(Modifier.padding(padding).padding(16.dp)) {
+                ConnectionLostBanner(state, vm)
+                ErrorText(CoreText.message(available.message))
+            }
             available !is Loadable.Ready -> Column(Modifier.padding(padding)) { Loading(stringResource(R.string.live_loading_pids)) }
             available.value.isEmpty() -> Column(Modifier.padding(padding).padding(16.dp)) { EmptyText(stringResource(R.string.live_no_pids)) }
             picking || live.selected.isEmpty() -> PidPicker(padding, state, vm, onDone = { picking = false })
@@ -64,18 +68,26 @@ fun LiveDataScreen(state: UiState, vm: MainViewModel) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                live.error?.let { err -> item { ErrorText(stringResource(R.string.live_error, err), onRetry = vm::startLive) } }
-                if (!live.running) item { WarningBox(stringResource(R.string.live_paused)) }
+                if (state.connectionLost) item { ConnectionLostBanner(state, vm) }
+                live.error?.let { err ->
+                    item {
+                        ErrorText(
+                            stringResource(R.string.live_error, CoreText.message(err)),
+                            onRetry = if (state.isConnected) vm::startLive else null,
+                        )
+                    }
+                }
+                if (!live.running && state.isConnected) item { WarningBox(stringResource(R.string.live_paused)) }
                 val pidsByKey = available.value.associateBy { it.key }
                 val rows = live.selected.flatMap { key ->
                     val values = live.values.values.filter { it.key == key }
                     if (values.isEmpty()) listOf(Triple(key, pidsByKey[key]?.name ?: key, null)) else values.map { Triple(key, it.name, it) }
                 }
-                items(rows, key = { (key, _, v) -> key + "@" + (v?.ecu ?: "") }) { (_, name, value) ->
+                items(rows, key = { (key, _, v) -> key + "@" + (v?.ecu ?: "") }) { (key, name, value) ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                Text(CoreText.pidName(key, name), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                                 value?.ecu?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                             }
                             Text(value?.text ?: "—", style = ValueTextStyle)
@@ -104,7 +116,7 @@ private fun PidPicker(padding: PaddingValues, state: UiState, vm: MainViewModel,
             ) {
                 Checkbox(checked = checked, onCheckedChange = { vm.toggleLivePid(pid.key) })
                 Column(Modifier.weight(1f)) {
-                    Text(pid.name, style = MaterialTheme.typography.bodyLarge)
+                    Text(CoreText.pidName(pid.key, pid.name), style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "PID %02X%s".format(pid.pid, if (pid.unit.isNotBlank()) " · ${pid.unit}" else ""),
                         style = MaterialTheme.typography.bodySmall,

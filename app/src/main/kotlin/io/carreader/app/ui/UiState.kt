@@ -114,4 +114,6 @@ data class UiState(
     val screen: Screen get() = backStack.last()
     val isConnected: Boolean get() = connection is ConnectionState.Connected
     val connected: ConnectionState.Connected? get() = connection as? ConnectionState.Connected
+    /** The session ended under a car screen (adapter lost, car switched off): offer reconnecting. */
+    val connectionLost: Boolean get() = connection is ConnectionState.Failed || connection is ConnectionState.Disconnected
 }
