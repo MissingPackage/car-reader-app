@@ -1,6 +1,6 @@
 # Handoff
 
-**Objective:** a multi-brand OBD app from one adapter. **Current:** v0.1.1 (English-only UI; repo content is English only) pre-release (2026-11-22): phase 1
+**Objective:** a multi-brand OBD app from one adapter. **Current:** v0.1.2 (UI in English with an Italian translation; all other repo content in English) pre-release (2026-11-22): phase 1
 (standard OBD-II) + phase 2 for the VW group, field test pending on a VW Passat and an Audi Q5.
 **Gap:** no real-adapter or real-car evidence yet; everything is verified on the simulator and a timing model.
 

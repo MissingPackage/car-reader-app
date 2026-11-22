@@ -30,7 +30,8 @@ was on screen when something went wrong.
 
 ## Known limits
 
-- The app is in English. Manufacturer-specific DTCs show their
+- The UI is in English with an Italian translation (it follows the phone language). DTC descriptions are
+  English only; manufacturer-specific DTCs show their
 SAE category and failure type only.
 - The adapter is classified as certified only when it identifies as an STN chip (OBDLink); clones are fine for
   reading.

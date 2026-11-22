@@ -148,6 +148,10 @@ fun DtcCard(dtc: Dtc) {
             }
             val description = CoreText.dtcDescription(dtc)
             if (description != null) {
+                val languageNote = stringResource(R.string.dtc_description_english)
+                if (languageNote.isNotEmpty()) {
+                    Text(languageNote, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text(description, style = MaterialTheme.typography.bodyLarge)
             } else {
                 Text(stringResource(R.string.faults_no_description), style = MaterialTheme.typography.bodyLarge)
