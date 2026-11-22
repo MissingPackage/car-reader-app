@@ -98,13 +98,14 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
     // ---------------------------------------------------------------- service 02
 
     override suspend fun freezeFrame(frame: Int): FreezeFrame? {
-        val trigger = send(0x02, 0x02, frame).firstNotNullOfOrNull { r ->
+        // The first ECU with a non-zero trigger owns the frame (the engine may have none while the gearbox has one).
+        val owner = send(0x02, 0x02, frame).firstNotNullOfOrNull { r ->
             if (r.payload.size >= 5 && r.u8(0) == 0x42 && r.u8(1) == 0x02 && r.u8(2) == frame) {
-                (r.u8(3) shl 8) or r.u8(4)
+                val code = (r.u8(3) shl 8) or r.u8(4)
+                if (code != 0) r.sourceId to code else null
             } else null
-        }
-        // No answer, or 0000: no freeze frame stored.
-        if (trigger == null || trigger == 0) return null
+        } ?: return null
+        val (ownerId, trigger) = owner
 
         val values = ArrayList<LiveValue>()
         val pids = readBitmaps(service = 0x02, frame = frame)
@@ -112,6 +113,7 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
             if (pidNumber == 0x02 || pidNumber % 0x20 == 0) continue
             val def = StandardPids.byPid(pidNumber) ?: continue
             for (r in send(0x02, pidNumber, frame)) {
+                if (r.sourceId != ownerId) continue
                 if (r.payload.size < 3 + def.bytes) continue
                 if (r.u8(0) != 0x42 || r.u8(1) != pidNumber || r.u8(2) != frame) continue
                 decodeOrNull(def, r.payload.copyOfRange(3, 3 + def.bytes))?.let { values += it.copy(ecu = ecuLabel(r.sourceId)) }
@@ -127,7 +129,8 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
         // If 09 00 got no answer, still try each PID: some ECUs skip the bitmap.
         fun wanted(pid: Int) = supported.isEmpty() || pid in supported
 
-        val vin = if (wanted(0x02)) tolerant { readVin() } else null
+        // The VIN is always requested: the bitmap format differs on K-line and the VIN is the most valuable field.
+        val vin = tolerant { readVin() }
         val calIds = if (wanted(0x04)) tolerant { readItems(0x04, 16).map(::asciiText) } ?: emptyList() else emptyList()
         val cvns = if (wanted(0x06)) tolerant { readItems(0x06, 4).map(::hexText) } ?: emptyList() else emptyList()
         val names = if (wanted(0x0A)) tolerant { readItems(0x0A, 20).map(::asciiText) } ?: emptyList() else emptyList()
@@ -140,15 +143,17 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
     }
 
     private suspend fun readVin(): String? {
-        val candidates = mergedDataPerEcu(0x02).map { bytes ->
+        val candidates = mergedDataPerEcu(0x02, expectedSize = 17).map { bytes ->
             bytes.map { (it.toInt() and 0xFF).toChar() }
                 .filter { it in '0'..'9' || it in 'A'..'Z' || it in 'a'..'z' }
                 .joinToString("")
                 .uppercase()
                 .let { if (it.length > 17) it.takeLast(17) else it }
         }
-        return candidates.firstOrNull { io.carreader.core.vin.Vin.isWellFormed(it) }
-            ?: candidates.firstOrNull { it.isNotEmpty() }
+        // Uncoded or replacement ECUs answer all zeros (or one repeated character): never prefer those.
+        val plausible = candidates.filter { io.carreader.core.vin.Vin.isWellFormed(it) && it.toSet().size > 1 }
+        val resolvable = plausible.firstOrNull { vin -> io.carreader.core.vin.WmiTable.resolveWmi(vin.take(3)) != null }
+        return resolvable ?: plausible.firstOrNull()
     }
 
     /** Reads a service 09 PID whose items have a fixed [itemSize] and splits every ECU's data into items. */
@@ -162,7 +167,7 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
      * CAN: one reassembled message per ECU, `49 pid count data...`.
      * Non-CAN: several 7-byte messages per ECU, `49 pid seq d1 d2 d3 d4`, merged by sequence number.
      */
-    private suspend fun mergedDataPerEcu(pid: Int): List<ByteArray> {
+    private suspend fun mergedDataPerEcu(pid: Int, expectedSize: Int? = null): List<ByteArray> {
         val responses = send(0x09, pid).filter { it.payload.size >= 3 && it.u8(0) == 0x49 && it.u8(1) == pid }
         val canBus = link.busProtocol?.isCan
         return responses.groupBy { it.sourceId }.values.map { group ->
@@ -172,7 +177,11 @@ class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
                 null -> group.size > 1 || group.all { it.payload.size == 7 }
             }
             if (!segmented) {
-                group.first().payload.let { it.copyOfRange(3, it.size) }
+                group.first().payload.let {
+                    // Some ECUs omit the count byte: `49 02 <17 bytes>` instead of `49 02 01 <17 bytes>`.
+                    if (expectedSize != null && it.size == 2 + expectedSize) it.copyOfRange(2, it.size)
+                    else it.copyOfRange(3, it.size)
+                }
             } else {
                 group.filter { it.payload.size >= 7 }
                     .associateBy { it.u8(2) } // dedupe repeated sequence numbers

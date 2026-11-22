@@ -29,6 +29,10 @@ object WmiTable : WmiResolver {
         val vw = "Volkswagen"
         add("WVW", m("Volkswagen AG", vw, "vag", DE))
         add("WV1", m("Volkswagen Commercial Vehicles", vw, "vag", DE))
+        add("WVG", m("Volkswagen AG (SUV)", vw, "vag", DE))
+        add("VWV", m("Volkswagen Spain", vw, "vag", "Spain"))
+        add("3VV", m("Volkswagen Mexico (SUV)", vw, "vag", "Mexico"))
+        add("1V2", m("Volkswagen USA (SUV)", vw, "vag", "United States"))
         add("WV2", m("Volkswagen Commercial Vehicles (buses and vans)", vw, "vag", DE))
         add("WV3", m("Volkswagen Commercial Vehicles (trucks)", vw, "vag", DE))
         add("1VW", m("Volkswagen of America", vw, "vag", US))
