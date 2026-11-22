@@ -12,8 +12,8 @@ android {
         applicationId = "io.carreader.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -47,6 +47,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":brands:vag"))
+    implementation(project(":brands:stellantis"))
     implementation(project(":sim"))
     implementation(libs.coroutines.android)
     implementation(libs.core.ktx)

@@ -88,9 +88,11 @@ abstract class UdsBrandModule(
         }
         val address = ecu.address
         val probe = (uds as? UdsTimeoutAdjustable)?.withTimeout(probeTimeoutMs) ?: uds
+        var probeDenied = false
         val probed: ByteArray? = try {
             probe.readDataByIdentifier(address, probeDid)
         } catch (e: NegativeResponseException) {
+            probeDenied = e.nrc in ACCESS_DENIED_NRCS
             null // it answered, so it is there
         } catch (e: NoResponseException) {
             if (!answersTesterPresent(probe, address)) return EcuReport(ecu, present = false, error = absentNote(ecu))
@@ -122,7 +124,11 @@ abstract class UdsBrandModule(
         if (state.extended) {
             try { uds.startSession(address, UdsSession.DEFAULT) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         }
-        return EcuReport(ecu, present = true, identification = identification, dtcs = dtcs, error = errors.joinToString("; ").ifEmpty { null })
+        return EcuReport(
+            ecu, present = true, identification = identification, dtcs = dtcs,
+            error = errors.joinToString("; ").ifEmpty { null },
+            accessDenied = probeDenied || state.accessDenied,
+        )
     }
 
     override suspend fun readData(ecu: EcuDescriptor, item: DataItem, uds: UdsClient): LiveValue? {
@@ -159,7 +165,8 @@ abstract class UdsBrandModule(
         val out = ArrayList<Pair<String, String>>()
         for (id in identificationDids) {
             val data = if (id.did == probeDid && probed != null) probed else try {
-                state.withSessionFallback { state.uds.readDataByIdentifier(state.address, id.did) }
+                // Not recorded as an access refusal: units often lock single identification DIDs (VIN, serial).
+                state.withSessionFallback(recordRefusal = false) { state.uds.readDataByIdentifier(state.address, id.did) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -205,6 +212,9 @@ abstract class UdsBrandModule(
         var extended = false
             private set
         private var extendedFailed = false
+        /** An access-control refusal (0x33 / 0x34) of the DTC read was seen on this unit. */
+        var accessDenied = false
+            private set
 
         suspend fun enterExtended(): Boolean {
             if (extended) return true
@@ -221,10 +231,15 @@ abstract class UdsBrandModule(
             }
         }
 
-        suspend fun <T> withSessionFallback(block: suspend () -> T): T = try {
-            block()
+        suspend fun <T> withSessionFallback(recordRefusal: Boolean = true, block: suspend () -> T): T = try {
+            try {
+                block()
+            } catch (e: NegativeResponseException) {
+                if (!extended && e.nrc in SESSION_NRCS && enterExtended()) block() else throw e
+            }
         } catch (e: NegativeResponseException) {
-            if (!extended && e.nrc in SESSION_NRCS && enterExtended()) block() else throw e
+            if (recordRefusal && e.nrc in ACCESS_DENIED_NRCS) accessDenied = true
+            throw e
         }
     }
 
@@ -232,6 +247,9 @@ abstract class UdsBrandModule(
         private const val NRC_INVALID_FORMAT = 0x13
         private const val NRC_OUT_OF_RANGE = 0x31
         private val SESSION_NRCS = setOf(0x7F, 0x7E, 0x31, 0x22)
+
+        /** ISO 14229-1 securityAccessDenied (0x33) and authenticationRequired (0x34, 2020 edition). */
+        val ACCESS_DENIED_NRCS: Set<Int> = setOf(0x33, 0x34)
 
         /** ASCII when printable (padding 0x00/0x20/0xFF trimmed), otherwise hex. */
         fun decodeIdentification(data: ByteArray, format: IdFormat): String {

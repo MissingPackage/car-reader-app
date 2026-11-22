@@ -94,6 +94,26 @@ class UdsBrandModuleTest {
     }
 
     @Test
+    fun accessRefusalsAreFlagged() = runTest {
+        val clean = TestBrand().scan(engine, DefaultUdsClient(presentEngine()))
+        assertFalse(clean.accessDenied)
+        // A locked identification DID is ordinary ECU behaviour, not a gateway sign.
+        val lockedId = ScriptedLink()
+            .on(0x7E0, "22 F1 87", "62 F1 87 41 42")
+            .on(0x7E0, "22 F1 89", "7F 22 33")
+            .on(0x7E0, "19 02 FF", "59 02 FF")
+        assertFalse(TestBrand().scan(engine, DefaultUdsClient(lockedId)).accessDenied)
+        val probe = ScriptedLink().on(0x7E0, "22 F1 87", "7F 22 33").on(0x7E0, "19 02 FF", "59 02 FF")
+        assertTrue(TestBrand().scan(engine, DefaultUdsClient(probe)).accessDenied)
+        val dtc = ScriptedLink()
+            .on(0x7E0, "22 F1 87", "62 F1 87 41 42")
+            .on(0x7E0, "19 02 FF", "7F 19 34")
+        val report = TestBrand().scan(engine, DefaultUdsClient(dtc))
+        assertTrue(report.present && report.accessDenied)
+        assertEquals(listOf("Part number" to "AB"), report.identification)
+    }
+
+    @Test
     fun extendedSessionOnlyWhenDefaultRefuses() = runTest {
         val link = ScriptedLink()
             .on(0x7E0, "22 F1 87", "62 F1 87 41 42")

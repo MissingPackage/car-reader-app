@@ -1,5 +1,6 @@
 package io.carreader.app.session
 
+import io.carreader.brands.stellantis.StellantisBrandModule
 import io.carreader.brands.vag.VagBrandModule
 import io.carreader.core.brand.BrandRegistry
 import io.carreader.core.guard.AuditLog
@@ -25,7 +26,7 @@ class SessionDependencies(
  */
 object SessionFactory {
     /** Brand modules shipped in this build. */
-    fun brandRegistry(): BrandRegistry = BrandRegistry(listOf(VagBrandModule()))
+    fun brandRegistry(): BrandRegistry = BrandRegistry(listOf(VagBrandModule(), StellantisBrandModule()))
 
     fun create(transport: Transport, deps: SessionDependencies): VehicleSession =
         DefaultVehicleSession(transport, brandRegistry(), deps.policy, deps.confirmation, deps.audit, deps.traffic, deps.clock)

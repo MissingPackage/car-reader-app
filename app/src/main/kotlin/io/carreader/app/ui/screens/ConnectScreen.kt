@@ -256,6 +256,17 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
                     vm.connect(ConnectTarget.Demo(DemoCar.PASSAT_ROLLED_BACK))
                 }
             }
+            for ((car, label) in listOf(
+                DemoCar.PEUGEOT_308 to R.string.connect_demo_peugeot_308,
+                DemoCar.FIAT_500X to R.string.connect_demo_fiat_500x,
+                DemoCar.FIAT_500X_GATEWAY to R.string.connect_demo_fiat_500x_gateway,
+            )) {
+                item {
+                    BigButton(stringResource(label), icon = Icons.Filled.DirectionsCar, enabled = !connecting) {
+                        vm.connect(ConnectTarget.Demo(car))
+                    }
+                }
+            }
         }
     }
 }

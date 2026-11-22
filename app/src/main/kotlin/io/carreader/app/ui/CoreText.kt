@@ -4,6 +4,10 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.carreader.app.R
+import io.carreader.brands.stellantis.FcaPlatform
+import io.carreader.brands.stellantis.PsaPlatform
+import io.carreader.brands.stellantis.StellantisBrandModule
+import io.carreader.brands.stellantis.StellantisCounters
 import io.carreader.brands.vag.VagBrandModule
 import io.carreader.brands.vag.VagCounters
 import io.carreader.brands.vag.VagEcus
@@ -125,6 +129,9 @@ object CoreText {
         "System name" to R.string.ecu_id_system_name,
         "Serial number" to R.string.ecu_id_serial_number,
         "Coding" to R.string.ecu_id_coding,
+        "Supplier" to R.string.ecu_id_supplier,
+        "Supplier software number" to R.string.ecu_id_supplier_sw_number,
+        "Supplier software version" to R.string.ecu_id_supplier_sw_version,
     )
 
     /** Labels of the identification values a brand module reads on scan ("Part number" ← F187). */
@@ -143,10 +150,36 @@ object CoreText {
         "C6" to R.string.ecu_vag_c6, "?742" to R.string.ecu_vag_742,
     )
 
-    /** VAG control unit names by address code; only for the units of [VagEcus] (same code and English name). */
+    /** Stellantis unit names by English name (several platforms share a name). */
+    private val stellantisEcuNames = mapOf(
+        "Engine" to R.string.ecu_vag_01,
+        "Transmission" to R.string.ecu_vag_02,
+        "Body computer (BSI)" to R.string.ecu_stla_bsi,
+        "Automatic gearbox" to R.string.ecu_stla_gearbox,
+        "Power steering" to R.string.ecu_stla_power_steering,
+        "Gear selector" to R.string.ecu_stla_gear_selector,
+        "High-voltage battery" to R.string.ecu_stla_hv_battery,
+        "Electric powertrain control" to R.string.ecu_stla_electric_powertrain,
+        "Electric motor" to R.string.ecu_stla_electric_motor,
+        "Body computer (BCM)" to R.string.ecu_stla_bcm,
+        "Chassis unit (steering angle, wheel speeds)" to R.string.ecu_stla_chassis,
+        "Tire pressure and body unit" to R.string.ecu_stla_tires_body,
+        "Tire pressure monitoring" to R.string.ecu_stla_tpms,
+        "Tire pressure monitoring (older models)" to R.string.ecu_stla_tpms_old,
+        "Lighting and wipers unit" to R.string.ecu_stla_lighting,
+        "Telematics / GPS" to R.string.ecu_stla_telematics,
+    )
+
+    private val stellantisUnits by lazy { (PsaPlatform.all + FcaPlatform.extended + FcaPlatform.standard).map { it.code to it.name }.toSet() }
+
+    /**
+     * Brand control unit names: VAG by address code, Stellantis by English name; only for units of the brand
+     * catalogs ([VagEcus], [PsaPlatform], [FcaPlatform]) with the same code and English name.
+     */
     fun ecuNameRes(code: String, englishName: String): TextRes? {
-        if (VagEcus.all.none { it.code == code && it.name == englishName }) return null
-        return vagEcuNames[code]?.let(::TextRes)
+        if (VagEcus.all.any { it.code == code && it.name == englishName }) return vagEcuNames[code]?.let(::TextRes)
+        if ((code to englishName) in stellantisUnits) return stellantisEcuNames[englishName]?.let(::TextRes)
+        return null
     }
 
     @Composable
@@ -171,6 +204,9 @@ object CoreText {
     private val counterNotes = mapOf(
         VagCounters.SNAPSHOT_NOTE to R.string.mileage_note_snapshot,
         VagCounters.UNITS_NOTE to R.string.mileage_note_units,
+        StellantisCounters.CLUSTER_NOTE to R.string.mileage_note_stla_cluster,
+        StellantisCounters.FCA_NOTE to R.string.mileage_note_stla_fca29,
+        StellantisCounters.UNVERIFIED_NOTE to R.string.mileage_note_stla_unverified,
     )
 
     /** A brand catalog's note on counters it cannot read; unknown notes stay in English. */
@@ -448,6 +484,11 @@ object CoreText {
     fun brandNote(text: String): String = when (text) {
         VagBrandModule.TP20_NOTE -> stringResource(R.string.note_vag_tp20)
         VagBrandModule.KLINE_NOTE -> stringResource(R.string.note_vag_kline)
+        StellantisBrandModule.GATEWAY_DENIED_NOTE -> stringResource(R.string.note_stla_gateway_denied)
+        StellantisBrandModule.GATEWAY_SILENT_NOTE -> stringResource(R.string.note_stla_gateway_silent)
+        StellantisBrandModule.NO_CAN_NOTE -> stringResource(R.string.note_stla_no_can)
+        StellantisBrandModule.UNKNOWN_UNITS_NOTE -> stringResource(R.string.note_stla_unknown_units)
+        StellantisBrandModule.NO_VIN_NOTE -> stringResource(R.string.note_stla_no_vin)
         else -> text
     }
 

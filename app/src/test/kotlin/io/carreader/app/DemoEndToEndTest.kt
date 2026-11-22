@@ -104,6 +104,32 @@ class DemoEndToEndTest {
     }
 
     @Test
+    fun stellantisDemoCars() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.connect(ConnectTarget.Demo(DemoCar.PEUGEOT_308))
+        advanceUntilIdle()
+        assertEquals("stellantis", vm.state.value.summary.valueOrNull?.brand?.id)
+        vm.navigate(Screen.Modules)
+        advanceUntilIdle()
+        assertEquals(listOf("6A8", "752", "6A9", "6B5"), vm.state.value.scan.reports.filter { it.present }.map { it.ecu.code })
+        assertTrue(vm.state.value.scan.brandNotes.isEmpty())
+        vm.back()
+        vm.navigate(Screen.Mileage)
+        advanceUntilIdle()
+        val check = vm.state.value.mileage.check!!
+        assertEquals(MileageVerdict.CONSISTENT, check.verdict)
+        assertTrue(check.readings.count { it.value != null } >= 2)
+
+        vm.connect(ConnectTarget.Demo(DemoCar.FIAT_500X_GATEWAY))
+        advanceUntilIdle()
+        vm.navigate(Screen.Modules)
+        advanceUntilIdle()
+        assertEquals(listOf(io.carreader.brands.stellantis.StellantisBrandModule.GATEWAY_DENIED_NOTE), vm.state.value.scan.brandNotes)
+        vm.disconnect()
+        advanceUntilIdle()
+    }
+
+    @Test
     fun demoPassatConnectsIdentifiesAndScans() = runTest(dispatcher) {
         val settings = InMemorySettings()
         val confirmation = DialogConfirmationPort()

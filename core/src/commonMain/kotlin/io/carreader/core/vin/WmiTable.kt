@@ -61,6 +61,9 @@ object WmiTable : WmiResolver {
         add("ZAM", m("Maserati (Stellantis)", "Maserati", "stellantis", IT))
         add("ZAC", m("Jeep, built in Italy (Stellantis)", "Jeep", "stellantis", IT))
         add("1C4", m("Jeep / Chrysler (Stellantis)", "Jeep", "stellantis", US))
+        add("1C6", m("Jeep / Ram trucks (Stellantis)", "Jeep", "stellantis", US))
+        add("3C4", m("Jeep / Chrysler, built in Mexico (Stellantis)", "Jeep", "stellantis", "Mexico"))
+        add("3C3", m("Fiat / Chrysler, built in Mexico (Stellantis)", "Fiat", "stellantis", "Mexico"))
         add("1J4", m("Jeep (Stellantis)", "Jeep", "stellantis", US))
         add("1J8", m("Jeep (Stellantis)", "Jeep", "stellantis", US))
         add("VF3", m("Peugeot (Stellantis)", "Peugeot", "stellantis", FR))
@@ -70,6 +73,7 @@ object WmiTable : WmiResolver {
         add("VR1", m("DS Automobiles (Stellantis)", "DS", "stellantis", FR))
         add("W0L", m("Opel / Vauxhall (Stellantis)", "Opel", "stellantis", DE))
         add("W0V", m("Opel / Vauxhall (Stellantis)", "Opel", "stellantis", DE))
+        add("VXK", m("Opel / Vauxhall, built by Stellantis Spain", "Opel", "stellantis", ES))
 
         // Ferrari: often listed next to Fiat but an independent maker
         add("ZFF", m("Ferrari", "Ferrari", "ferrari", IT))

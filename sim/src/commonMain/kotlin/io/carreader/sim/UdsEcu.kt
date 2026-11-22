@@ -14,6 +14,8 @@ data class SimUdsDtc(val code: String, val failureType: Int = 0x00, val status: 
  *   unknown DID → 0x31; a DID in [extendedSessionDids] read in the default session → 0x31.
  * - 0x19 01 / 02 / 0A: DTC count, DTCs by status mask, all DTCs.
  * - 0x14 FFFFFF (or a group): clears [dtcs].
+ * - a DID in [refusedDids] → 0x33 securityAccessDenied (a unit behind a secure gateway or locked);
+ * - with [refuseDtcReads], 0x19 → 0x33 (a gateway that blocks fault memory access);
  * - 0x2E, 0x31, 0x27: refused, 0x7F in the default session, 0x33 in the extended one (no writes here).
  * - anything else → 0x11.
  *
@@ -25,6 +27,8 @@ class UdsEcu(
     val dids: Map<Int, ByteArray> = emptyMap(),
     val extraDids: Map<Int, () -> ByteArray> = emptyMap(),
     val extendedSessionDids: Set<Int> = emptySet(),
+    val refusedDids: Set<Int> = emptySet(),
+    val refuseDtcReads: Boolean = false,
     dtcs: List<SimUdsDtc> = emptyList(),
     val availabilityMask: Int = 0xFF,
     var pendingCount: Int = 0,
@@ -58,7 +62,7 @@ class UdsEcu(
                 if (request.u8(1) and 0x80 != 0) null else bytesOf(0x7E, request.u8(1))
             }
             0x22 -> readData(request)
-            0x19 -> readDtcInformation(request)
+            0x19 -> if (refuseDtcReads) negative(sid, Nrcs.SECURITY_ACCESS_DENIED) else readDtcInformation(request)
             0x14 -> {
                 if (request.size != 4) return negative(sid, Nrcs.INCORRECT_LENGTH)
                 dtcs.clear()
@@ -90,6 +94,7 @@ class UdsEcu(
         var out = bytesOf(0x62)
         for (i in 1 until request.size step 2) {
             val did = (request.u8(i) shl 8) or request.u8(i + 1)
+            if (did in refusedDids) return negative(0x22, Nrcs.SECURITY_ACCESS_DENIED)
             if (did in extendedSessionDids && session == 0x01) return negative(0x22, Nrcs.REQUEST_OUT_OF_RANGE)
             val data = extraDids[did]?.invoke() ?: dids[did] ?: return negative(0x22, Nrcs.REQUEST_OUT_OF_RANGE)
             out += did.u16() + data

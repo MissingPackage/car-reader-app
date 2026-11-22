@@ -3,6 +3,7 @@ package io.carreader.app.transport
 import io.carreader.core.transport.Transport
 import io.carreader.sim.Scenarios
 import io.carreader.sim.SimTransport
+import io.carreader.sim.StellantisScenarios
 
 /** Demo mode: an in-process simulated adapter and car from the `sim` module. */
 object DemoTransports {
@@ -13,5 +14,8 @@ object DemoTransports {
         DemoCar.PASSAT -> SimTransport(Scenarios.passatB8())
         DemoCar.Q5 -> SimTransport(Scenarios.audiQ5())
         DemoCar.PASSAT_ROLLED_BACK -> SimTransport(Scenarios.passatB8(clusterRollbackKm = ROLLBACK_KM))
+        DemoCar.PEUGEOT_308 -> SimTransport(StellantisScenarios.peugeot308())
+        DemoCar.FIAT_500X -> SimTransport(StellantisScenarios.fiat500x())
+        DemoCar.FIAT_500X_GATEWAY -> SimTransport(StellantisScenarios.fiat500x(secureGateway = true))
     }
 }

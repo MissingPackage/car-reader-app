@@ -15,6 +15,8 @@ data class VehicleContext(
     /** Model year if known (user input or decoded); brand modules may pick variants with it. */
     val modelYear: Int? = null,
     val canBus: Boolean,
+    /** The diagnostic bus uses 29-bit CAN identifiers (ISO 15765-4 protocols 7 and 9). */
+    val extendedCan: Boolean = false,
 )
 
 enum class EcuProtocol { UDS, KWP2000 }
@@ -43,6 +45,13 @@ data class EcuReport(
     val identification: List<Pair<String, String>> = emptyList(),
     val dtcs: List<Dtc> = emptyList(),
     val error: String? = null,
+    /**
+     * The unit refused its presence probe or its DTC read with an access-control negative response (0x33
+     * securityAccessDenied or 0x34 authenticationRequired): typical of a secure gateway. Refusals of single
+     * identification DIDs do not count (units often lock the VIN or serial); the probe DID does, because it is
+     * the first request a unit gets and a gateway that blocks the unit refuses it. See [SecureGatewayCheck].
+     */
+    val accessDenied: Boolean = false,
 )
 
 /**

@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "car-reader"
-include(":core", ":brands:vag", ":sim", ":app")
+include(":core", ":brands:vag", ":brands:stellantis", ":sim", ":app")

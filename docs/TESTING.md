@@ -8,6 +8,8 @@
 | Phase 1, any EU car since 2001/2004: VIN, protocol, live data (60 PIDs), stored/pending/permanent DTCs, freeze frame, readiness | tested on the simulator |
 | Phase 2, VW group (MQB / MLB-evo, e.g. Passat B8 2015+, Q5 FY 2017+): control-module scan, identification, per-module DTCs, OBDb measurements | tested on the simulator |
 | Older VW group cars using VW TP2.0 (Passat B6/B7, early Q5 8R) | not supported: the app says so after the scan |
+| Phase 2, Stellantis: PSA platform (Peugeot, Citroën, DS, Opel/Vauxhall since about 2019, PSA-based Fiat/Jeep/Lancia) on 11-bit CAN, FCA platform on 29-bit CAN (European Fiat, Alfa Romeo, Jeep) and North American Jeeps on 11-bit CAN: module scan, identification, per-module DTCs, OBDb measurements, mileage totals where OBDb has them | tested on the simulator (Peugeot 308, Fiat 500X, Citroën C4 behind a gateway) |
+| Stellantis Secure Gateway (about 2018+) | detected and explained after the scan (refused reads, or only OBD-II answering); the app cannot authenticate |
 | Mileage check: dashboard mileage vs the copies in engine, gearbox and ABS units, mileage stamps of past events, gearbox drive time / engine hours and average speed (VW group from OBDb rows; OBD-II PIDs A6 and 7F on any car) | tested on the simulator, including a rolled-back Passat demo |
 | Clear DTCs (OBD service 04, UDS 0x14) | off by default; enable in Settings; guarded |
 | Writes, coding, adaptations, routines | not in this build |

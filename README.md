@@ -19,6 +19,8 @@ core (KMP: jvm + android)
   link/      DiagnosticLink port + ELM327/STN driver (AT commands, CAN framing, multi-frame)
   transport/ Transport port (raw bytes)
 brands/vag  Volkswagen group module (VW, Audi, Skoda, Seat, Cupra)
+brands/stellantis  Stellantis module: PSA and FCA platform adapters (Fiat, Alfa Romeo, Lancia, Jeep, Abarth,
+            Peugeot, Citroën, DS, Opel/Vauxhall), see docs/STELLANTIS.md
 sim         In-process ELM327 + ECU simulator (tests and the app's demo mode)
 ```
 
@@ -38,22 +40,25 @@ functions.
 
 ## Status
 
-Version 0.1.3: phase 1 (standard OBD-II), phase 2 for the Volkswagen group, and a read-only mileage check
-that compares the dashboard with the other control units. See
+Version 0.1.4: phase 1 (standard OBD-II), phase 2 for the Volkswagen group and the Stellantis group
+([docs/STELLANTIS.md](docs/STELLANTIS.md)), and a read-only mileage check that compares the dashboard with
+the other control units. See
 [docs/TESTING.md](docs/TESTING.md) for what is covered and how to field-test, and
 [docs/screenshots](docs/screenshots) for every screen.
 
 Tests run against `sim`, an in-process ELM327/STN adapter and vehicle simulator (VW Passat B8, Audi Q5 FY,
-a K-line petrol car, a clone adapter), plus a timing-faithful adapter model for the driver.
+Peugeot 308, Fiat 500X with and without a secure gateway, a gateway-blocked Citroën C4, a K-line petrol car,
+a clone adapter), plus a timing-faithful adapter model for the driver.
 
 ## Data sources
 
 VW group measurements are derived from [OBDb](https://github.com/OBDb) (CC BY-SA 4.0), see
-[brands/vag/ATTRIBUTION.md](brands/vag/ATTRIBUTION.md).
+[brands/vag/ATTRIBUTION.md](brands/vag/ATTRIBUTION.md); Stellantis measurements and unit addresses likewise, see
+[brands/stellantis/ATTRIBUTION.md](brands/stellantis/ATTRIBUTION.md).
 
 ## Build
 
 JDK 17 and the Android SDK (platform 35). `./gradlew :app:assembleDebug` builds the debug APK;
-`./gradlew :core:jvmTest :sim:jvmTest :brands:vag:jvmTest :app:testDebugUnitTest` runs the tests on the JVM
+`./gradlew :core:jvmTest :sim:jvmTest :brands:vag:jvmTest :brands:stellantis:jvmTest :app:testDebugUnitTest` runs the tests on the JVM
 (app screens are rendered with Paparazzi). Debug builds are signed with the committed `app/debug.keystore`, so
 new builds install over old ones.

@@ -122,7 +122,8 @@ class DefaultVehicleSession(
         val id = runCatchingNonCancel { obd.identification() } ?: VehicleIdentification(vin = null)
         val vin = Vin.parseOrNull(id.vin)
         val manufacturer = vin?.let(wmi::resolve)
-        val context = VehicleContext(vin, manufacturer, modelYear = null, canBus = rawLink.busProtocol?.isCan == true)
+        val bus = rawLink.busProtocol
+        val context = VehicleContext(vin, manufacturer, modelYear = null, canBus = bus?.isCan == true, extendedCan = bus?.extendedId == true)
         val brand = forcedBrandId?.let(brands::byId) ?: brands.forVehicle(context)
         val voltage = guardContext.batteryVoltage()
         return VehicleSummary(id, context, brand, voltage).also { summary = it }
