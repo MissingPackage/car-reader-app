@@ -35,6 +35,8 @@ import io.carreader.core.obd2.ReadinessReport
 import io.carreader.core.obd2.StandardPids
 import io.carreader.core.obd2.VehicleIdentification
 import io.carreader.core.transport.Transport
+import io.carreader.core.transport.TransportException
+import io.carreader.core.link.LinkException
 import io.carreader.core.uds.DefaultUdsClient
 import io.carreader.core.uds.UdsClient
 import io.carreader.core.vin.Vin
@@ -132,13 +134,37 @@ class DefaultVehicleSession(
     }
 
     override fun liveData(pids: List<PidDefinition>, periodMs: Long): Flow<List<LiveValue>> = flow {
+        var emptyRounds = 0
         while (currentCoroutineContext().isActive) {
             val started = clock()
-            val values = pids.flatMap { pid -> runCatchingNonCancel { obd.readPid(pid) } ?: emptyList() }
+            val values = pids.flatMap { pid -> readPidOrFail(pid) }
+            emptyRounds = if (values.isEmpty() && pids.isNotEmpty()) emptyRounds + 1 else 0
+            if (emptyRounds >= MAX_EMPTY_ROUNDS) {
+                throw LinkException("No answer from the car for $emptyRounds consecutive rounds (ignition off or adapter lost?)")
+            }
             emit(values)
             val elapsed = clock() - started
             delay((periodMs - elapsed).coerceAtLeast(50))
         }
+    }
+
+    /** One PID; a lost transport fails the session (so the UI shows it) instead of freezing the last values. */
+    private suspend fun readPidOrFail(pid: PidDefinition): List<LiveValue> = try {
+        obd.readPid(pid)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: TransportException) {
+        markLost(e)
+        throw e
+    } catch (e: Throwable) {
+        if (e.cause is TransportException) { markLost(e); throw e }
+        error("${e::class.simpleName}: ${e.message}")
+        emptyList()
+    }
+
+    private fun markLost(e: Throwable) {
+        error("connection lost: ${e.message}")
+        _state.value = ConnectionState.Failed("Connection lost: ${e.message ?: "adapter not reachable"}")
     }
 
     override suspend fun readDtcs(source: DtcSource): List<Dtc> = obd.readDtcs(source)
@@ -201,6 +227,10 @@ class DefaultVehicleSession(
 
     /** The brand module in use, for UI hints. */
     fun brand(): BrandModule? = summary?.brand
+
+    private companion object {
+        const val MAX_EMPTY_ROUNDS = 5
+    }
 
     private fun info(text: String) = traffic.record(TrafficEntry(clock(), Direction.INFO, text))
     private fun error(text: String) = traffic.record(TrafficEntry(clock(), Direction.ERROR, text))
