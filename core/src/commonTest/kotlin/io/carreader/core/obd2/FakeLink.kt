@@ -15,7 +15,7 @@ import io.carreader.core.util.toHex
  * Scripted [DiagnosticLink] for tests: maps a request ("01 0C") to the responses of each ECU.
  * Unscripted requests get no answer (empty list, like "NO DATA"); [failing] requests throw [LinkException].
  */
-class FakeLink(override var busProtocol: BusProtocol? = BusProtocol.CAN_11_500) : DiagnosticLink {
+class FakeLink(override var busProtocol: BusProtocol? = BusProtocol.CAN_11_500) : io.carreader.core.guard.GatedDiagnosticLink {
     private val script = HashMap<String, MutableList<EcuResponse>>()
     val failing = HashSet<String>()
     val sent = ArrayList<String>()

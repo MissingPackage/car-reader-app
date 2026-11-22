@@ -1,5 +1,7 @@
 package io.carreader.core.uds
 
+import io.carreader.core.guard.GatedDiagnosticLink
+
 import io.carreader.core.link.DiagnosticLink
 import io.carreader.core.link.EcuAddress
 import io.carreader.core.link.EcuResponse
@@ -25,7 +27,7 @@ interface UdsTimeoutAdjustable {
  * WriteDataByIdentifier, RoutineControl and SecurityAccess are deliberately not implemented.
  */
 class DefaultUdsClient(
-    private val link: DiagnosticLink,
+    private val link: GatedDiagnosticLink,
     private val timeoutMs: Long = 2000,
     /** Retries when "response pending" (0x78) or "busy, repeat request" (0x21) still reaches this layer. */
     private val maxRetries: Int = 3,
@@ -82,7 +84,9 @@ class DefaultUdsClient(
                     throw UdsProtocolException("Negative response for service ${data.u8(1).toString(16)}, expected ${sid.toString(16)}")
                 }
                 val nrc = data.u8(2)
-                if ((nrc == NRC_RESPONSE_PENDING || nrc == NRC_BUSY_REPEAT) && attempt < maxRetries) {
+                // Never re-send a state-changing request: only reads are repeated.
+                val repeatable = sid != SID_CLEAR_DTC
+                if (repeatable && (nrc == NRC_RESPONSE_PENDING || nrc == NRC_BUSY_REPEAT) && attempt < maxRetries) {
                     attempt++
                     if (nrc == NRC_BUSY_REPEAT) delay(busyRetryDelayMs)
                     continue
@@ -98,8 +102,9 @@ class DefaultUdsClient(
 
     private fun pick(target: EcuAddress, responses: List<EcuResponse>): EcuResponse? {
         if (responses.isEmpty()) return null
-        val matching = responses.filter { target.responseId == null || it.sourceId == null || it.sourceId == target.responseId }
-        val candidates = matching.ifEmpty { responses }
+        // Adapters without a hardware receive filter can pass other ECUs' traffic: never attribute it to the target.
+        val candidates = responses.filter { target.responseId == null || it.sourceId == null || it.sourceId == target.responseId }
+        if (candidates.isEmpty()) return null
         // A final answer wins over a pending notice that slipped through the driver.
         return candidates.firstOrNull { !isPending(it) } ?: candidates.first()
     }

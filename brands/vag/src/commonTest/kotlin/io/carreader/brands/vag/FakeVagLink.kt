@@ -10,7 +10,7 @@ import io.carreader.core.util.hexToBytes
 import io.carreader.core.util.toHex
 
 /** Test link: fixed answers keyed by (request id, request hex); anything else gets no answer. */
-class FakeVagLink(private val answers: Map<Pair<Int, String>, String>) : DiagnosticLink {
+class FakeVagLink(private val answers: Map<Pair<Int, String>, String>) : io.carreader.core.guard.GatedDiagnosticLink {
     val sent = ArrayList<Pair<Int, String>>()
 
     override suspend fun initialize(): AdapterInfo = error("not used")

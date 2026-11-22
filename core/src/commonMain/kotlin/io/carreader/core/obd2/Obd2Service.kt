@@ -1,5 +1,7 @@
 package io.carreader.core.obd2
 
+import io.carreader.core.guard.GatedDiagnosticLink
+
 import io.carreader.core.link.DiagnosticLink
 import io.carreader.core.link.EcuAddress
 import io.carreader.core.link.EcuResponse
@@ -13,7 +15,7 @@ import io.carreader.core.link.LinkException
  * answers are ignored rather than thrown. [LinkException]s from the link propagate, except in
  * [identification], which tolerates ECUs or PIDs that fail.
  */
-class Obd2Service(private val link: DiagnosticLink) : Obd2Port {
+class Obd2Service(private val link: GatedDiagnosticLink) : Obd2Port {
 
     private val target = EcuAddress.OBD_FUNCTIONAL
 

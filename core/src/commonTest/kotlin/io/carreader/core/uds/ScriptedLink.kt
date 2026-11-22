@@ -13,7 +13,7 @@ import io.carreader.core.util.toHex
  * Test link: answers by (request id, request hex). A queued list of answers is consumed in order (the last
  * one repeats); unknown requests get no answer. Records every request with its options.
  */
-class ScriptedLink : DiagnosticLink {
+class ScriptedLink : io.carreader.core.guard.GatedDiagnosticLink {
     private val script = HashMap<Pair<Int, String>, ArrayDeque<List<String>>>()
     val sent = ArrayList<Triple<Int, String, RequestOptions>>()
 

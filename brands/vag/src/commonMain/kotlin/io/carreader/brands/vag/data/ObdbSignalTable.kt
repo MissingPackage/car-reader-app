@@ -23,6 +23,8 @@ internal data class ObdbSignal(
         if (modelYear == null) return true
         if (yearFrom == null && yearTo == null && years.isEmpty()) return true
         if (modelYear in years) return true
+        // from <= to is an inclusive range; otherwise the bounds are alternatives (OBDb reference semantics).
+        if (yearFrom != null && yearTo != null && yearFrom <= yearTo) return modelYear in yearFrom..yearTo
         if (yearFrom != null && modelYear >= yearFrom) return true
         if (yearTo != null && modelYear <= yearTo) return true
         return false

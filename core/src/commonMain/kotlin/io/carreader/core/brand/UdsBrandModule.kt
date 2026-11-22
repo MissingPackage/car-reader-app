@@ -137,6 +137,10 @@ abstract class UdsBrandModule(
             null
         } catch (e: IllegalArgumentException) {
             null // answer shorter than the signal layout: wrong variant for this car
+        } catch (e: io.carreader.core.uds.UdsProtocolException) {
+            null
+        } catch (e: io.carreader.core.link.LinkException) {
+            null
         }
     }
 
@@ -156,10 +160,10 @@ abstract class UdsBrandModule(
         for (id in identificationDids) {
             val data = if (id.did == probeDid && probed != null) probed else try {
                 state.withSessionFallback { state.uds.readDataByIdentifier(state.address, id.did) }
-            } catch (e: NegativeResponseException) {
-                null
-            } catch (e: NoResponseException) {
-                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // one bad answer must not drop the identification values already read
             }
             val text = data?.let { decodeIdentification(it, id.format) }
             if (!text.isNullOrEmpty()) out += id.label to text
@@ -177,7 +181,9 @@ abstract class UdsBrandModule(
                 if (e.nrc == NRC_OUT_OF_RANGE || e.nrc == NRC_INVALID_FORMAT) { lastError = e; continue }
                 throw e
             }
-            return records.filter { it.status and mask != 0 }.map { toDtc(ecu, it) }
+            // Report only records with a fault bit (testFailed, ...ThisCycle, pending, confirmed, ...SinceLastClear):
+            // many ECUs list every supported DTC as "not yet tested" (0x50) after a clear.
+            return records.filter { it.status and mask and FAULT_BITS != 0 }.map { toDtc(ecu, it) }
         }
         throw lastError ?: IllegalStateException("No status mask accepted")
     }
@@ -239,3 +245,6 @@ abstract class UdsBrandModule(
         private fun isPad(b: Byte): Boolean = b.toInt() and 0xFF in setOf(0x00, 0x20, 0xFF)
     }
 }
+
+/** ISO 14229 DTC status bits that mean a fault was seen: 0x01, 0x02, 0x04, 0x08, 0x20. */
+internal const val FAULT_BITS = 0x2F
