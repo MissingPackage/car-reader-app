@@ -8,6 +8,7 @@ import io.carreader.core.brand.IdFormat
 import io.carreader.core.brand.IdentificationDid
 import io.carreader.core.brand.UdsBrandModule
 import io.carreader.core.brand.VehicleContext
+import io.carreader.core.mileage.CounterCatalog
 
 /**
  * Volkswagen group (VW, Audi, Skoda, Seat, Cupra) on UDS over 11-bit CAN: MQB and MLB-evo cars, e.g.
@@ -39,6 +40,8 @@ class VagBrandModule(genericText: GenericDtcText = GenericDtcText.Sae) : UdsBran
         IdentificationDid("VIN", 0xF190),
         IdentificationDid("Coding", 0x0600, IdFormat.HEX),
     )
+
+    override val counterCatalog: CounterCatalog get() = VagCounters
 
     override fun dataCatalog(ecu: EcuDescriptor, vehicle: VehicleContext): List<DataItem> =
         VagData.itemsFor(ecu.address.requestId, vehicle)

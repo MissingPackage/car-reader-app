@@ -142,6 +142,13 @@ abstract class ScreenshotSuite(night: Boolean) {
         shot("ecu-detail", tall = true)
     }
 
+    @Test fun mileage() {
+        connected()
+        vm.navigate(Screen.Mileage)
+        h.scheduler.advanceUntilIdle()
+        shot("mileage", tall = true)
+    }
+
     @Test fun settings() {
         connected()
         vm.navigate(Screen.Settings)

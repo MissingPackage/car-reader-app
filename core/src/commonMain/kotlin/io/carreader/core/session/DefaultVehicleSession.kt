@@ -24,6 +24,8 @@ import io.carreader.core.link.elm.ElmLink
 import io.carreader.core.log.Direction
 import io.carreader.core.log.TrafficEntry
 import io.carreader.core.log.TrafficLog
+import io.carreader.core.mileage.CounterReader
+import io.carreader.core.mileage.CounterReading
 import io.carreader.core.obd2.Dtc
 import io.carreader.core.obd2.DtcSource
 import io.carreader.core.obd2.FreezeFrame
@@ -223,6 +225,31 @@ class DefaultVehicleSession(
             description = "Clear the fault memory of this control module",
         )
         guard.execute(request, guardContext) { uds.clearDiagnosticInformation(ecu.address) }
+    }
+
+    private fun counterReader(brand: BrandModule?) = CounterReader(obd, uds, brand, brandUds = DidCachingUdsClient(uds))
+
+    override suspend fun counterCount(): Int {
+        val s = currentSummary()
+        return counterReader(s.brand).sources(s.context).size
+    }
+
+    override fun readCounters(): Flow<CounterReading> = flow {
+        val s = currentSummary()
+        info("mileage check: reading counters")
+        try {
+            counterReader(s.brand).read(s.context).collect { emit(it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (e is TransportException || e.cause is TransportException) markLost(e)
+            throw e
+        }
+    }
+
+    override fun counterNotes(): List<String> {
+        val s = summary ?: return emptyList()
+        return counterReader(s.brand).notes(s.context)
     }
 
     /** The brand module in use, for UI hints. */

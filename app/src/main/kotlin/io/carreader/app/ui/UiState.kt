@@ -5,6 +5,8 @@ import io.carreader.app.transport.ConnectTarget
 import io.carreader.app.transport.DeviceEntry
 import io.carreader.core.brand.DataItem
 import io.carreader.core.brand.EcuReport
+import io.carreader.core.mileage.CounterReading
+import io.carreader.core.mileage.MileageCheck
 import io.carreader.core.obd2.Dtc
 import io.carreader.core.obd2.DtcSource
 import io.carreader.core.obd2.FreezeFrame
@@ -22,6 +24,7 @@ sealed interface Screen {
     data object FaultCodes : Screen
     data object Readiness : Screen
     data object Modules : Screen
+    data object Mileage : Screen
     data class EcuDetail(val code: String) : Screen
     data object Settings : Screen
     data object Log : Screen
@@ -86,6 +89,16 @@ data class EcuDetailState(
     val cleared: Boolean = false,
 )
 
+/** Mileage check: readings arrive one by one; [check] is the comparison once every counter was read. */
+data class MileageState(
+    val running: Boolean = false,
+    val started: Boolean = false,
+    val expected: Int = 0,
+    val readings: List<CounterReading> = emptyList(),
+    val check: MileageCheck? = null,
+    val error: String? = null,
+)
+
 /** One-shot messages shown as a dialog. */
 sealed interface UiMessage {
     /** The guard refused. [disabledInSettings] offers a shortcut to Settings. */
@@ -108,6 +121,7 @@ data class UiState(
     val readiness: Loadable<ReadinessReport?> = Loadable.Idle,
     val scan: ScanState = ScanState(),
     val ecuDetail: EcuDetailState? = null,
+    val mileage: MileageState = MileageState(),
     val mutationsEnabled: Boolean = false,
     val message: UiMessage? = null,
 ) {

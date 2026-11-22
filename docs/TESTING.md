@@ -8,6 +8,7 @@
 | Phase 1, any EU car since 2001/2004: VIN, protocol, live data (60 PIDs), stored/pending/permanent DTCs, freeze frame, readiness | tested on the simulator |
 | Phase 2, VW group (MQB / MLB-evo, e.g. Passat B8 2015+, Q5 FY 2017+): control-module scan, identification, per-module DTCs, OBDb measurements | tested on the simulator |
 | Older VW group cars using VW TP2.0 (Passat B6/B7, early Q5 8R) | not supported: the app says so after the scan |
+| Mileage check: dashboard mileage vs the copies in engine, gearbox and ABS units, mileage stamps of past events, gearbox drive time / engine hours and average speed (VW group from OBDb rows; OBD-II PIDs A6 and 7F on any car) | tested on the simulator, including a rolled-back Passat demo |
 | Clear DTCs (OBD service 04, UDS 0x14) | off by default; enable in Settings; guarded |
 | Writes, coding, adaptations, routines | not in this build |
 
@@ -21,7 +22,8 @@
 
 1. Ignition on (engine off or running, car parked).
 2. Connect, open Vehicle, then Fault codes, Live data, Readiness, Control modules.
-3. Open Diagnostics log and share it, even when everything works. Failed attempts are kept in the same log.
+3. Open Mileage check and note what it shows next to the dashboard reading.
+4. Open Diagnostics log and share it, even when everything works. Failed attempts are kept in the same log.
 
 ## What to report
 
@@ -29,6 +31,10 @@ The shared log plus: car model and year, adapter brand and model, phone model an
 was on screen when something went wrong.
 
 ## Known limits
+
+- Mileage check: an indication, not proof. Only identifiers published in OBDb are read; mileage stamps stored
+  with UDS fault codes, and airbag/gateway/door units, are not read (no public layout). Differences up to
+  max(100 km, 1 %) are treated as normal. Every row shows its source (OBDb table and header/DID, or J1979 PID).
 
 - The UI is in English with an Italian translation (it follows the phone language). DTC descriptions are
   English only; manufacturer-specific DTCs show their

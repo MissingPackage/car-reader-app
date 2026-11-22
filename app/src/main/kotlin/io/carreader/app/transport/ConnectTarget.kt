@@ -2,8 +2,8 @@ package io.carreader.app.transport
 
 import io.carreader.core.transport.Transport
 
-/** The two demo cars offered on the connect screen. */
-enum class DemoCar { PASSAT, Q5 }
+/** The demo cars offered on the connect screen; [PASSAT_ROLLED_BACK] shows the mileage-check warning. */
+enum class DemoCar { PASSAT, Q5, PASSAT_ROLLED_BACK }
 
 /** What the user picked on the connect screen. */
 sealed interface ConnectTarget {

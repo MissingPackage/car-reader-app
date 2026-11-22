@@ -11,6 +11,7 @@ app (Android, Compose)          UI, Android transports (Bluetooth SPP, BLE, Wi-F
 core (KMP: jvm + android)
   session/   VehicleSession implementation: composes everything below
   guard/     WriteGuard + GatedLink: the single gate for every mutating request
+  mileage/   CounterCatalog port (one per brand), CounterReader, MileageAnalyzer: cross-unit mileage check
   brand/     BrandModule port, BrandRegistry, UdsBrandModule (reusable base for UDS brands)
   obd2/      SAE J1979 services, PID registry, DTC decoding
   uds/       ISO 14229 client (read services + guarded clear)
@@ -23,6 +24,9 @@ sim         In-process ELM327 + ECU simulator (tests and the app's demo mode)
 
 Dependencies point inward: brands and the app depend on `core` ports, never the reverse.
 A new brand is a new `BrandModule` (usually extending `UdsBrandModule`) registered in `BrandRegistry`.
+A brand joins the mileage check by returning a `CounterCatalog` from `BrandModule.counterCatalog`: a list of
+sourced counters (dashboard total, other units' totals, event stamps, operating time). Reading and comparison
+are shared.
 
 ## Safety
 
@@ -34,7 +38,8 @@ functions.
 
 ## Status
 
-Version 0.1.0: phase 1 (standard OBD-II) and phase 2 for the Volkswagen group. See
+Version 0.1.3: phase 1 (standard OBD-II), phase 2 for the Volkswagen group, and a read-only mileage check
+that compares the dashboard with the other control units. See
 [docs/TESTING.md](docs/TESTING.md) for what is covered and how to field-test, and
 [docs/screenshots](docs/screenshots) for every screen.
 

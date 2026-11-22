@@ -7,6 +7,7 @@ import io.carreader.core.brand.EcuReport
 import io.carreader.core.brand.VehicleContext
 import io.carreader.core.link.AdapterInfo
 import io.carreader.core.link.BusProtocol
+import io.carreader.core.mileage.CounterReading
 import io.carreader.core.obd2.Dtc
 import io.carreader.core.obd2.DtcSource
 import io.carreader.core.obd2.FreezeFrame
@@ -16,6 +17,7 @@ import io.carreader.core.obd2.ReadinessReport
 import io.carreader.core.obd2.VehicleIdentification
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 sealed interface ConnectionState {
     data object Disconnected : ConnectionState
@@ -65,4 +67,15 @@ interface VehicleSession {
     suspend fun readBrandData(ecu: EcuDescriptor, items: List<DataItem>): List<LiveValue>
     /** Guarded. Throws GuardDenied when blocked. */
     suspend fun clearEcuDtcs(ecu: EcuDescriptor)
+
+    // Mileage check (read only)
+    /** How many counters [readCounters] will report, for progress. */
+    suspend fun counterCount(): Int = 0
+    /**
+     * Reads every mileage and operating-time counter known for this car (standard OBD-II plus the brand's
+     * catalog), emitting one reading per counter and answering unit. Read services only.
+     */
+    fun readCounters(): Flow<CounterReading> = emptyFlow()
+    /** The brand's notes on counters it cannot read (English). */
+    fun counterNotes(): List<String> = emptyList()
 }

@@ -40,7 +40,15 @@ class ObdEngineEcu(
     /** Readiness monitors (PID 01 byte C bits) reported as not complete. */
     var incompleteMonitors: Int = 0,
     val style: ObdBusStyle = ObdBusStyle.CAN,
+    /** PID A6 odometer in km; the PID is supported only when set. */
+    private val odometerKm: (() -> Double)? = null,
+    /** PID 7F total engine run time in seconds; the PID is supported only when set. */
+    private val engineRunTimeS: (() -> Double)? = null,
 ) : EcuBehavior {
+    /** [supportedPids] plus the optional lifetime counters. */
+    private val allPids: Set<Int> = supportedPids +
+        listOfNotNull(0xA6.takeIf { odometerKm != null }, 0x7F.takeIf { engineRunTimeS != null })
+
     val stored = storedDtcs.toMutableList()
     val pending = pendingDtcs.toMutableList()
     val permanent = permanentDtcs.toMutableList()
@@ -106,10 +114,10 @@ class ObdEngineEcu(
     private fun pidData(pid: Int, s: SignalSource): ByteArray? {
         if (pid % 0x20 == 0) {
             // PID 0x20 exists only if a PID above 0x20 does (bit 0x20 of the previous bitmap), and so on.
-            if (pid != 0 && supportedPids.none { it > pid }) return null
-            return bitmap(pid, supportedPids)
+            if (pid != 0 && allPids.none { it > pid }) return null
+            return bitmap(pid, allPids)
         }
-        if (pid !in supportedPids) return null
+        if (pid !in allPids) return null
         return when (pid) {
             0x01 -> readiness()
             0x03 -> bytesOf(if (fuel == FuelType.PETROL && s.rpm > 0) 0x02 else 0x00, 0x00)
@@ -137,6 +145,9 @@ class ObdEngineEcu(
             0x42 -> b2(s.moduleVolts * 1000)
             0x46 -> b1(s.ambientC + 40)
             0x5C -> b1(s.oilC + 40)
+            // Lifetime counters come from the car, not from a freeze-frame snapshot.
+            0x7F -> engineRunTimeS?.let { bytesOf(0x01) + u32(it()) + ByteArray(8) }
+            0xA6 -> odometerKm?.let { u32(it() * 10) }
             else -> null
         }
     }
@@ -218,6 +229,11 @@ class ObdEngineEcu(
     private fun parseCvn(hex: String): ByteArray {
         require(hex.length == 8) { "CVN must be 8 hex digits: $hex" }
         return ByteArray(4) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    }
+
+    private fun u32(v: Double): ByteArray {
+        val raw = v.toLong().coerceIn(0L, 0xFFFF_FFFFL)
+        return ByteArray(4) { ((raw shr (24 - 8 * it)) and 0xFF).toByte() }
     }
 
     private fun clamp(v: Double, max: Int): Int = v.roundToInt().coerceIn(0, max)

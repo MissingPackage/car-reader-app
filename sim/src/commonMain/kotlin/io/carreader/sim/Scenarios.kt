@@ -22,9 +22,12 @@ object Scenarios {
     fun passatB8(
         adapter: SimAdapterProfile = SimAdapterProfile.SIMULATOR,
         extraDids: Map<Int, Map<Int, LiveDid>> = emptyMap(),
+        /** km taken off the instrument cluster only, as a tampered car would show; the other units keep the truth. */
+        clusterRollbackKm: Int = 0,
     ): SimScenario {
         val vin = "WVWZZZ3CZGE512345"
         val vehicle = SimVehicleState()
+        val counters = PassatCounters(vehicle, clusterRollbackKm)
         val signals = LiveSignals(vehicle, diesel = true)
         val engineDids = mapOf<Int, LiveDid>(
             0xF40C to { s -> (s.rpm * 4).u16c() }, // rpm mirror of OBD PID 0C, same scaling
@@ -45,11 +48,13 @@ object Scenarios {
                 calibrationIds = listOf("04L906021DT 6301"), cvns = listOf("9A3F5C21"),
                 ids = vagIds("04L906021DT", "6301", "04L907309N", "H13", "R4 2.0l TDI", "VWZ6Z0G1234567", vin, "0114000032240800EF00"),
                 udsDtcs = listOf(SimUdsDtc("P0401", 0x00, 0xAF)),
-                live = engineDids + (extraDids[0x7E0] ?: emptyMap()),
+                live = engineDids + counters.engine + (extraDids[0x7E0] ?: emptyMap()),
                 extendedOnly = setOf(0x1044),
+                odometerKm = { vehicle.odometerKm.toDouble() },
+                engineRunTimeS = { counters.engineHours * 3600.0 },
             ),
-            vagTransmission(signals, "0D9300040J", "DQ250-6F", vin, calibrationId = "0D9300040J  4527"),
-            vagUds("Brakes (ABS/ESC)", 0x713, 0x77D, vagIds("3Q0907379AB", "0261", "3Q0907379AB", "H03", "ESC MK100", "00000L4E3A1234", vin, "1A2B0000C0"), signals, extraDids),
+            vagTransmission(signals, "0D9300040J", "DQ250-6F", vin, calibrationId = "0D9300040J  4527", live = counters.transmission),
+            vagUds("Brakes (ABS/ESC)", 0x713, 0x77D, vagIds("3Q0907379AB", "0261", "3Q0907379AB", "H03", "ESC MK100", "00000L4E3A1234", vin, "1A2B0000C0"), signals, extraDids, live = counters.brakes),
             vagUds("Air conditioning", 0x746, 0x7B0, vagIds("3G0907044AE", "0405", "3G0907044AE", "H07", "Climatronic", "0123456789A123", vin, "000A0C00"), signals, extraDids),
             vagUds("Central electronics", 0x70E, 0x778, vagIds("5Q0937084CE", "0352", "5Q0937084CE", "H25", "BCM MQB", "0000000P801234", vin, "4A0E8E00F4A1"), signals, extraDids),
             vagUds(
@@ -57,7 +62,11 @@ object Scenarios {
                 dtcs = listOf(SimUdsDtc("B1001", 0x1B, 0x2F)),
                 pendingCount = 1, // airbag modules often answer 0x78 before the DTC list
             ),
-            vagUds("Instruments", 0x714, 0x77E, vagIds("3G0920751B", "0411", "3G0920751B", "H11", "KOMBI", "VWZ7Z0F4123456", vin, "1D0E0000"), signals, extraDids),
+            vagUds(
+                "Instruments", 0x714, 0x77E, vagIds("3G0920751B", "0411", "3G0920751B", "H11", "KOMBI", "VWZ7Z0F4123456", vin, "1D0E0000"), signals, extraDids,
+                live = counters.instruments,
+                extendedOnly = setOf(0x2203),
+            ),
             vagUds(
                 "Gateway", 0x710, 0x77A, vagIds("5Q0907530AA", "1601", "5Q0907530AA", "H31", "GW MQB High", "1504000000A123", vin, "030103000400"), signals, extraDids,
                 dtcs = listOf(SimUdsDtc("U0121", 0x00, 0x28)),
@@ -68,8 +77,9 @@ object Scenarios {
             vagUds("Park assist", 0x70A, 0x774, vagIds("5Q0919294E", "1510", "5Q0919294E", "H05", "Parking Aid", "18150000A01234", vin, "02"), signals, extraDids),
         )
         return SimScenario(
-            name = "VW Passat B8 2.0 TDI (2016)",
-            description = "MQB diesel on CAN 11-bit 500k with 11 ECUs: engine EGR fault, gateway lost ABS communication, airbag fault",
+            name = if (clusterRollbackKm > 0) "VW Passat B8 2.0 TDI (2016), odometer rolled back" else "VW Passat B8 2.0 TDI (2016)",
+            description = "MQB diesel on CAN 11-bit 500k with 11 ECUs: engine EGR fault, gateway lost ABS communication, airbag fault" +
+                if (clusterRollbackKm > 0) "; instrument cluster shows $clusterRollbackKm km less than the other units" else "",
             protocol = BusProtocol.CAN_11_500,
             adapter = adapter,
             ecus = ecus,
@@ -87,6 +97,7 @@ object Scenarios {
         val vin = "WAUZZZFYZJ2045678"
         val vehicle = SimVehicleState(fuelLevelPercent = 41.0, ambientC = 9.0, odometerKm = 54_210)
         val signals = LiveSignals(vehicle, diesel = true)
+        val odo = { vehicle.odometerKm.toLong() }
         val engineDids = mapOf<Int, LiveDid>(
             0xF40C to { s -> (s.rpm * 4).u16c() },
             0x11BE to { s -> ((s.oilC + 273.1) * 10).u16c() }, // engine oil temperature, raw / 10 - 273.1 °C
@@ -104,10 +115,20 @@ object Scenarios {
                 calibrationIds = listOf("04L906056KN 0007"), cvns = listOf("5E61B0C4"),
                 ids = vagIds("04L906056KN", "0007", "04L907309R", "H05", "R4 2.0l TDI", "AUZ7Z0J3456789", vin, "011A0012342F0800EF00"),
                 udsDtcs = listOf(SimUdsDtc("P2463", 0x00, 0xAF), SimUdsDtc("P0299", 0x00, 0x24)),
-                live = engineDids + (extraDids[0x7E0] ?: emptyMap()),
+                live = engineDids + mapOf<Int, LiveDid>(
+                    0x295A to { _ -> u24(odo()) }, // odometer, km (OBDb Q5_ODO)
+                    0x1160 to { _ -> u32(odo() * 1000) }, // odometer, raw / 1000 km (Q5_ODO_HD)
+                    0x5149 to { _ -> u24(31_870) }, // chain elongation, mileage at last adaptation, km
+                ) + (extraDids[0x7E0] ?: emptyMap()),
                 extendedOnly = emptySet(),
             ),
-            vagTransmission(signals, "0CK927156M", "DL382-7F", vin, calibrationId = "0CK927156M  2211"),
+            vagTransmission(
+                signals, "0CK927156M", "DL382-7F", vin, calibrationId = "0CK927156M  2211",
+                live = mapOf(
+                    0x0302 to { _ -> u16(1_204 * 4) }, // total drive time, raw / 4 h (Q5_DRIVE_TIME)
+                    0x10CA to { _ -> u16(4_980).reversedArray() }, // clutch 1 kiss point adaptation, little endian, raw * 10 km
+                ),
+            ),
             vagUds(
                 "Brakes (ABS/ESC)", 0x713, 0x77D, vagIds("80A907379D", "0110", "80A907379D", "H04", "ESP 9.3", "00000M2E1B5678", vin, "2A3D00C1"), signals, extraDids,
                 dtcs = listOf(SimUdsDtc("C0035", 0x29, 0x28)),
@@ -116,7 +137,10 @@ object Scenarios {
             vagUds("Central electronics", 0x70E, 0x778, vagIds("4M0907063CJ", "0210", "4M0907063CJ", "H18", "BCM1 MLBevo", "0000000Q512345", vin, "5B0F8F00A4C1"), signals, extraDids),
             vagUds("Adaptive cruise control", 0x757, 0x7C1, vagIds("4M0907561", "0240", "4M0907561", "H02", "ACC Bosch", "B00000X4567890", vin, "0300"), signals, extraDids),
             vagUds("Airbag", 0x715, 0x77F, vagIds("80A959655B", "0450", "80A959655B", "H12", "AirbagAU10", "004F1X0Y5B5678", vin, "13004655"), signals, extraDids),
-            vagUds("Instruments", 0x714, 0x77E, vagIds("80A920790A", "0352", "80A920790A", "H21", "KOMBI", "AUZ7Z0K5678901", vin, "1E0F0000"), signals, extraDids),
+            vagUds(
+                "Instruments", 0x714, 0x77E, vagIds("80A920790A", "0352", "80A920790A", "H21", "KOMBI", "AUZ7Z0K5678901", vin, "1E0F0000"), signals, extraDids,
+                live = mapOf(0x22B8 to { _ -> u32(odo() * 1000 + 450) }), // odometer, raw / 1000 km (Q5_ODO_MILEAGE_HR)
+            ),
             vagUds("Gateway", 0x710, 0x77A, vagIds("4M0907468G", "0930", "4M0907468G", "H35", "GW MLBevo", "1704000000B567", vin, "040203000500"), signals, extraDids, live = gatewayDids),
             vagUds("Steering assist", 0x712, 0x77C, vagIds("80A909144D", "2011", "80A909144D", "H07", "EPS_MLB", "000000008W5678", vin, "0110"), signals, extraDids),
             vagUds(
@@ -219,6 +243,8 @@ object Scenarios {
         udsDtcs: List<SimUdsDtc>,
         live: Map<Int, LiveDid>,
         extendedOnly: Set<Int>,
+        odometerKm: (() -> Double)? = null,
+        engineRunTimeS: (() -> Double)? = null,
     ): SimEcu = ComposedEcu(
         "Engine", 0x7E0, 0x7E8,
         ObdEngineEcu(
@@ -226,11 +252,20 @@ object Scenarios {
             storedDtcs = stored, pendingDtcs = pending, permanentDtcs = permanent,
             calibrationIds = calibrationIds, cvns = cvns, ecuName = "ECM" to "EngineControl",
             incompleteMonitors = 0x40, // particulate filter monitor not complete
+            odometerKm = odometerKm,
+            engineRunTimeS = engineRunTimeS,
         ),
         UdsEcu(dids = ids, extraDids = live.mapValues { (_, f) -> { f(signals) } }, extendedSessionDids = extendedOnly, dtcs = udsDtcs),
     )
 
-    private fun vagTransmission(signals: SignalSource, partNumber: String, system: String, vin: String, calibrationId: String): SimEcu =
+    private fun vagTransmission(
+        signals: SignalSource,
+        partNumber: String,
+        system: String,
+        vin: String,
+        calibrationId: String,
+        live: Map<Int, LiveDid> = emptyMap(),
+    ): SimEcu =
         ComposedEcu(
             "Transmission", 0x7E1, 0x7E9,
             ObdEngineEcu(
@@ -241,7 +276,10 @@ object Scenarios {
                 ecuName = "TCM" to "TransmissionCtl",
                 freezeFrame = null,
             ),
-            UdsEcu(dids = vagIds(partNumber, "4527", partNumber, "H09", system, "00001234567890", vin, "0018")),
+            UdsEcu(
+                dids = vagIds(partNumber, "4527", partNumber, "H09", system, "00001234567890", vin, "0018"),
+                extraDids = live.mapValues { (_, f) -> { f(signals) } },
+            ),
         )
 
     private fun vagUds(
@@ -254,11 +292,15 @@ object Scenarios {
         dtcs: List<SimUdsDtc> = emptyList(),
         live: Map<Int, LiveDid> = emptyMap(),
         pendingCount: Int = 0,
+        extendedOnly: Set<Int> = emptySet(),
     ): SimEcu {
         val all = live + (extraDids[requestId] ?: emptyMap())
         return ComposedEcu(
             name, requestId, responseId,
-            UdsEcu(dids = ids, extraDids = all.mapValues { (_, f) -> { f(signals) } }, dtcs = dtcs, pendingCount = pendingCount),
+            UdsEcu(
+                dids = ids, extraDids = all.mapValues { (_, f) -> { f(signals) } }, extendedSessionDids = extendedOnly,
+                dtcs = dtcs, pendingCount = pendingCount,
+            ),
         )
     }
 
@@ -283,7 +325,55 @@ object Scenarios {
         0x0600 to ByteArray(codingHex.length / 2) { codingHex.substring(it * 2, it * 2 + 2).toInt(16).toByte() },
     )
 
+    /**
+     * Mileage counters of the simulated Passat, laid out as the OBDb Volkswagen-Passat rows read them. The cluster
+     * shows the true odometer minus [rollbackKm]; every other unit keeps the true value, as after a cluster-only
+     * tamper. Stamps and hours are fixed, plausible values for a car of this mileage.
+     */
+    private class PassatCounters(private val vehicle: SimVehicleState, private val rollbackKm: Int) {
+        val engineHours = 2_310.0
+        private val odo get() = vehicle.odometerKm.toLong()
+        private val cluster get() = (odo - rollbackKm).coerceAtLeast(0)
+
+        val instruments: Map<Int, LiveDid> = mapOf(
+            0x22B8 to { _ -> u32(cluster * 1000 + 380) }, // PASSAT_ODO_MILEAGE_HR, raw / 1000 km
+            0x2203 to { _ -> u24(cluster) }, // PASSAT_ODO_DASH, km, extended session
+        )
+        val engine: Map<Int, LiveDid> = mapOf(
+            0x295A to { _ -> u24(odo - 3) }, // PASSAT_ODO, km (updated less often than the cluster)
+            0x1160 to { _ -> u32(odo * 1000 + 120) }, // PASSAT_ODO_HD, raw / 1000 km
+            0x5149 to { _ -> u24(61_240) }, // PASSAT_CHAIN_ELONGATION, mileage at last adaptation, km
+            0x516C to { _ -> u24(61_240) }, // PASSAT_CHAIN_ELONGATION_INLET
+        )
+        val transmission: Map<Int, LiveDid> = mapOf(
+            0x3841 to { _ -> u32(odo * 10) }, // PASSAT_ODO_V1, raw / 10 km
+            0x3887 to { _ -> u32(odo * 10).reversedArray() }, // PASSAT_MQB_TCM_ODO_2, little endian, raw / 10 km
+            0x10CA to { _ -> u16(7_135).reversedArray() }, // clutch 1 kiss point adaptation, little endian, raw * 10 km
+            0x10EB to { _ -> u16(8_302).reversedArray() }, // clutch 2 kiss point adaptation, little endian, raw * 10 km
+            0x0302 to { _ -> u16(2_050 * 4) }, // PASSAT_DRIVE_TIME, raw / 4 h
+        )
+        val brakes: Map<Int, LiveDid> = mapOf(
+            0x180E to { _ -> bytesOf(0) + u24(odo - 210) }, // brake disk drying, last activation (bit 8, 24 bits, km)
+            0x1821 to { _ -> // TPMS: 8 stamps of 32 bits from bit 8: adaptations (newest first), then warnings
+                listOf(odo - 1_900, 66_020, 41_500, 18_230, odo - 5_400, 52_880, 0, 0)
+                    .fold(bytesOf(0)) { acc, km -> acc + u32(km) }
+            },
+            0x18B6 to { _ -> bytesOf(0) + u24(0xFFFFFF) }, // counter steer support never activated
+        )
+    }
+
     private fun Double.u16c(): ByteArray = roundToInt().coerceIn(0, 0xFFFF).u16()
+
+    private fun u16(v: Int): ByteArray = v.coerceIn(0, 0xFFFF).u16()
+    private fun u24(v: Long): ByteArray {
+        val raw = v.coerceIn(0L, 0xFFFFFFL)
+        return ByteArray(3) { ((raw shr (16 - 8 * it)) and 0xFF).toByte() }
+    }
+    private fun u24(v: Int): ByteArray = u24(v.toLong())
+    private fun u32(v: Long): ByteArray {
+        val raw = v.coerceIn(0L, 0xFFFF_FFFFL)
+        return ByteArray(4) { ((raw shr (24 - 8 * it)) and 0xFF).toByte() }
+    }
 
     private fun SimVehicleState.batteryVolts(): Double =
         if (ignitionOn && engineRunning) restingBatteryVolts + 1.6 else restingBatteryVolts

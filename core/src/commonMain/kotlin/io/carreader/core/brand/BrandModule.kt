@@ -1,6 +1,7 @@
 package io.carreader.core.brand
 
 import io.carreader.core.link.EcuAddress
+import io.carreader.core.mileage.CounterCatalog
 import io.carreader.core.obd2.Dtc
 import io.carreader.core.obd2.LiveValue
 import io.carreader.core.uds.UdsClient
@@ -70,6 +71,9 @@ interface BrandModule {
 
     /** Notes about a whole scan (e.g. "this car probably uses VW TP2.0, not supported yet"). */
     fun scanNotes(vehicle: VehicleContext, reports: List<EcuReport>): List<String> = emptyList()
+
+    /** Mileage and operating-time counters of this brand, for the mileage check; null when it knows none. */
+    val counterCatalog: CounterCatalog? get() = null
 }
 
 /** Holds every brand module; the session asks it which one fits the connected car. */

@@ -35,6 +35,7 @@ import io.carreader.app.ui.screens.EcuDetailScreen
 import io.carreader.app.ui.screens.FaultCodesScreen
 import io.carreader.app.ui.screens.LiveDataScreen
 import io.carreader.app.ui.screens.LogScreen
+import io.carreader.app.ui.screens.MileageScreen
 import io.carreader.app.ui.screens.ModulesScreen
 import io.carreader.app.ui.screens.ReadinessScreen
 import io.carreader.app.ui.screens.SettingsScreen
@@ -56,6 +57,7 @@ fun AppRoot(viewModel: MainViewModel, onExit: () -> Unit) {
         Screen.FaultCodes -> FaultCodesScreen(state, viewModel)
         Screen.Readiness -> ReadinessScreen(state, viewModel)
         Screen.Modules -> ModulesScreen(state, viewModel)
+        Screen.Mileage -> MileageScreen(state, viewModel)
         is Screen.EcuDetail -> EcuDetailScreen(screen.code, state, viewModel)
         Screen.Settings -> SettingsScreen(state, viewModel)
         Screen.Log -> LogScreen(state, viewModel)

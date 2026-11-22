@@ -5,7 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.carreader.app.R
 import io.carreader.brands.vag.VagBrandModule
+import io.carreader.brands.vag.VagCounters
 import io.carreader.brands.vag.VagEcus
+import io.carreader.core.mileage.CounterReader
 import io.carreader.core.brand.EcuDescriptor
 import io.carreader.core.guard.MutationKind
 import io.carreader.core.obd2.Dtc
@@ -164,6 +166,28 @@ object CoreText {
         return "${m.groupValues[1]} ${resolve(res)}"
     }
 
+    // ------------------------------------------------------------ mileage check
+
+    private val counterNotes = mapOf(
+        VagCounters.SNAPSHOT_NOTE to R.string.mileage_note_snapshot,
+        VagCounters.UNITS_NOTE to R.string.mileage_note_units,
+    )
+
+    /** A brand catalog's note on counters it cannot read; unknown notes stay in English. */
+    fun counterNoteRes(text: String): TextRes? = counterNotes[text]?.let(::TextRes)
+
+    @Composable
+    fun counterNote(text: String): String = counterNoteRes(text)?.let { resolve(it) } ?: text
+
+    private val obdModulePattern = Regex(Regex.escape(CounterReader.OBD_MODULE) + """ \((\S+)\)""")
+
+    /** The unit a counter came from: "01 Motore", or "OBD-II standard (7E8)". */
+    @Composable
+    fun counterModule(module: String): String {
+        obdModulePattern.matchEntire(module)?.let { return stringResource(R.string.mileage_obd_module, it.groupValues[1]) }
+        return ecuLabel(module)
+    }
+
     // ------------------------------------------------------------ standard PIDs
 
     private val pidNames = mapOf(
@@ -178,7 +202,7 @@ object CoreText {
         0x46 to R.string.pid_46, 0x47 to R.string.pid_47, 0x49 to R.string.pid_49, 0x4A to R.string.pid_4a,
         0x4C to R.string.pid_4c, 0x4D to R.string.pid_4d, 0x4E to R.string.pid_4e, 0x51 to R.string.pid_51,
         0x52 to R.string.pid_52, 0x5C to R.string.pid_5c, 0x5E to R.string.pid_5e, 0x61 to R.string.pid_61,
-        0x62 to R.string.pid_62, 0x63 to R.string.pid_63,
+        0x62 to R.string.pid_62, 0x63 to R.string.pid_63, 0x7F to R.string.pid_7f, 0xA6 to R.string.pid_a6,
     )
 
     /**

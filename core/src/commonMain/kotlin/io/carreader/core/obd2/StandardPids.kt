@@ -148,6 +148,12 @@ object StandardPids {
     val actualTorque = ScaledPid(0x62, "Actual engine torque", "%", 1, offset = -125.0)
     val referenceTorque = ScaledPid(0x63, "Engine reference torque", "N·m", 2)
 
+    /** PID 7F: byte A flags which totals follow; B-E total engine run time in seconds (idle and PTO totals after). */
+    val engineRunTimeTotal = ScaledPid(0x7F, "Total engine run time", "s", 13, width = 4, startByte = 1)
+
+    /** PID A6: odometer, 0.1 km per bit (mandatory in California from model year 2019; optional in the EU). */
+    val odometer = ScaledPid(0xA6, "Odometer", "km", 4, 0.1, decimals = 1)
+
     val all: List<PidDefinition> = listOf(
         monitorStatus, fuelSystemStatus, engineLoad, coolantTemp,
         shortTermTrimBank1, longTermTrimBank1, shortTermTrimBank2, longTermTrimBank2,
@@ -159,6 +165,7 @@ object StandardPids {
         controlModuleVoltage, absoluteLoad, commandedLambda, relativeThrottle, ambientAirTemp, absoluteThrottleB,
         acceleratorPedalD, acceleratorPedalE, commandedThrottle, timeWithMil, timeSinceClear,
         fuelType, ethanolPercent, oilTemp, fuelRate, driverDemandTorque, actualTorque, referenceTorque,
+        engineRunTimeTotal, odometer,
     )
 
     private val index: Map<Int, PidDefinition> = all.associateBy { it.pid }

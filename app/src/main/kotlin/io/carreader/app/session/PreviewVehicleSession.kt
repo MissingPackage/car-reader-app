@@ -28,7 +28,13 @@ import io.carreader.core.obd2.VehicleIdentification
 import io.carreader.core.session.ConnectionState
 import io.carreader.core.session.VehicleSession
 import io.carreader.core.session.VehicleSummary
+import io.carreader.core.mileage.CounterReader
+import io.carreader.core.mileage.CounterReading
+import io.carreader.core.mileage.CounterSource
+import io.carreader.core.mileage.ReadingStatus
+import io.carreader.core.mileage.StandardCounters
 import io.carreader.core.uds.UdsClient
+import io.carreader.brands.vag.VagCounters
 import io.carreader.core.vin.Manufacturer
 import io.carreader.core.vin.Vin
 import kotlinx.coroutines.delay
@@ -206,6 +212,29 @@ class PreviewVehicleSession(
         }
     }
 
+    // Mileage: the preview car shows a rolled-back cluster (the same layout as the real VW catalog).
+    private val counterContext get() = VehicleContext(Vin.parseOrNull(SAMPLE_VIN), Manufacturer("Volkswagen AG", "Volkswagen", "vag", "Germany"), 2016, canBus = true)
+    private fun counterSources(): List<CounterSource> = VagCounters.sources(counterContext) + StandardCounters.sources(counterContext)
+
+    override suspend fun counterCount(): Int = counterSources().size
+
+    override fun readCounters(): Flow<CounterReading> = flow {
+        for (source in counterSources()) {
+            delay(stepDelayMs)
+            val module = source.ecu?.let(CounterReader::moduleLabel) ?: "${CounterReader.OBD_MODULE} (7E8)"
+            val value = sampleCounters[source.id.substringAfter('.').substringAfter("PASSAT_")]
+            emit(
+                when {
+                    source.id == "obd.A6" -> CounterReading(source, CounterReader.OBD_MODULE, null, ReadingStatus.NOT_SUPPORTED)
+                    value == null -> CounterReading(source, module, null, ReadingStatus.NOT_RECORDED)
+                    else -> CounterReading(source, module, value, ReadingStatus.OK)
+                },
+            )
+        }
+    }
+
+    override fun counterNotes(): List<String> = VagCounters.notes(counterContext)
+
     /** A fixed-value PID for previews; [sample] varies the value over time. */
     class PreviewPid(
         override val pid: Int,
@@ -258,6 +287,17 @@ class PreviewVehicleSession(
     }
 
     companion object {
+        /** Counter values by OBDb id without the model prefix (or the J1979 PID): cluster 60 000 km behind. */
+        private val sampleCounters: Map<String, Double> = mapOf(
+            "ODO_MILEAGE_HR" to 27_412.4, "ODO_DASH" to 27_412.0,
+            "ODO" to 87_409.0, "ODO_HD" to 87_412.1, "ODO_V1" to 87_412.0, "MQB_TCM_ODO_2" to 87_412.0,
+            "CHAIN_ELONGATION" to 61_240.0, "CHAIN_ELONGATION_INLET" to 61_240.0,
+            "PQ35_CLUTCH_1_ADAPT_KISS_POINT_PART_1_ODO_READING" to 71_350.0,
+            "PQ35_CLUTCH_2_ADAPT_KISS_POINT_PART_1_ODO_READING" to 83_020.0,
+            "BDD_ODO" to 87_202.0, "TPMS_ODO_RDG_AT_LAST_ADAPT" to 85_512.0, "TPMS_ODO_RDG_AT_LAST_WARN" to 82_012.0,
+            "DRIVE_TIME" to 2_050.0, "7F" to 2_310.0,
+        )
+
         const val SAMPLE_VIN = "WVWZZZ3CZJE012345"
 
         val previewPids: List<PidDefinition> = listOf(

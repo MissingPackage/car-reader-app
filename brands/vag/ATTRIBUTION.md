@@ -17,6 +17,9 @@ Changes made: only Mode 0x22 signals on 11-bit CAN headers are kept; signals OBD
 investigation) and signals on 29-bit headers are left out; each signal is flattened to one text line
 (header, DID, session, model-year filter, id, group, name and the `fmt` decoding fields). Names are unchanged.
 
+The mileage counters in `VagCounters.kt` refer to rows of the same tables by their OBDb signal id; their DIDs
+and scaling are the OBDb ones, unchanged.
+
 Regenerate with `tools/generate_obdb_table.py` (usage in its header).
 
 The decoder (`io.carreader.core.brand.SignalFormat`) follows the field semantics of the OBDb reference

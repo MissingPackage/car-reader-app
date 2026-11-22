@@ -251,6 +251,11 @@ fun ConnectScreen(state: UiState, vm: MainViewModel) {
                     vm.connect(ConnectTarget.Demo(DemoCar.Q5))
                 }
             }
+            item {
+                BigButton(stringResource(R.string.connect_demo_passat_rollback), icon = Icons.Filled.DirectionsCar, enabled = !connecting) {
+                    vm.connect(ConnectTarget.Demo(DemoCar.PASSAT_ROLLED_BACK))
+                }
+            }
         }
     }
 }

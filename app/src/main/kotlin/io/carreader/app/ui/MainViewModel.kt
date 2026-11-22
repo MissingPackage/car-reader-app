@@ -18,6 +18,7 @@ import io.carreader.core.guard.GuardDenied
 import io.carreader.core.log.Direction
 import io.carreader.core.log.TrafficEntry
 import io.carreader.core.log.RingTrafficLog
+import io.carreader.core.mileage.MileageAnalyzer
 import io.carreader.core.obd2.DtcSource
 import io.carreader.core.obd2.PidDefinition
 import io.carreader.core.session.ConnectionState
@@ -75,6 +76,9 @@ class MainViewModel(
     private var stateJob: Job? = null
     private var liveJob: Job? = null
     private var scanJob: Job? = null
+    private var mileageJob: Job? = null
+    /** Increments with each check, so a cancelled one never overwrites the state of the next. */
+    private var mileageRun = 0
     private var bleScanJob: Job? = null
     private var busyJob: Job? = null
     /** The last adapter release; a new connection waits for it so two transports never hold the adapter. */
@@ -90,6 +94,7 @@ class MainViewModel(
             Screen.FaultCodes -> if (_state.value.faults.dtcs.isEmpty()) refreshFaults()
             Screen.Readiness -> refreshReadiness()
             Screen.Modules -> if (!_state.value.scan.started) startScan()
+            Screen.Mileage -> if (!_state.value.mileage.started) startMileageCheck()
             is Screen.EcuDetail -> openEcu(screen.code)
             else -> Unit
         }
@@ -115,6 +120,12 @@ class MainViewModel(
         if (screen == Screen.LiveData) stopLive()
         // An unfinished scan keeps the bus busy for nothing once the screen is gone; the next visit starts again.
         if (screen == Screen.Modules) scanJob?.cancel()
+        if (screen == Screen.Mileage && mileageJob?.isActive == true) {
+            // Reset here, not only in the job's finally: a job cancelled before it ever ran never reaches it.
+            mileageJob?.cancel()
+            mileageRun++
+            _state.update { it.copy(mileage = MileageState()) }
+        }
         if (screen is Screen.EcuDetail) _state.update { it.copy(ecuDetail = null) }
     }
 
@@ -178,6 +189,8 @@ class MainViewModel(
         // A session that failed mid-way (adapter lost) is still open: release it before the new attempt.
         stopLive()
         scanJob?.cancel()
+        mileageJob?.cancel()
+        mileageRun++
         busyJob?.cancel()
         stateJob?.cancel()
         session?.let(::releaseSession)
@@ -199,6 +212,7 @@ class MainViewModel(
                 readiness = Loadable.Idle,
                 scan = ScanState(),
                 ecuDetail = null,
+                mileage = MileageState(),
             )
         }
         val previousConnect = connectJob
@@ -276,6 +290,8 @@ class MainViewModel(
         connectJob?.cancel()
         stopLive()
         scanJob?.cancel()
+        mileageJob?.cancel()
+        mileageRun++
         busyJob?.cancel()
         stateJob?.cancel()
         session?.let(::releaseSession)
@@ -290,6 +306,7 @@ class MainViewModel(
                 readiness = Loadable.Idle,
                 scan = ScanState(),
                 ecuDetail = null,
+                mileage = MileageState(),
             )
         }
     }
@@ -512,6 +529,45 @@ class MainViewModel(
     }
 
     fun report(code: String): EcuReport? = _state.value.scan.reports.firstOrNull { it.ecu.code == code }
+
+    // ---------------------------------------------------------------- mileage check
+
+    /** Reads every mileage counter, then compares them. Read services only; another start while running is ignored. */
+    fun startMileageCheck() {
+        val s = session ?: return
+        if (mileageJob?.isActive == true) return
+        _state.update { it.copy(mileage = MileageState(running = true, started = true)) }
+        val run = ++mileageRun
+        mileageJob = viewModelScope.launch {
+            var cancelled = false
+            try {
+                val expected = withContext(io) { s.counterCount() }
+                _state.update { it.copy(mileage = it.mileage.copy(expected = expected)) }
+                s.readCounters().flowOn(io).collect { reading ->
+                    _state.update { it.copy(mileage = it.mileage.copy(readings = it.mileage.readings + reading)) }
+                }
+            } catch (e: CancellationException) {
+                cancelled = true
+                throw e
+            } catch (e: Throwable) {
+                _state.update { it.copy(mileage = it.mileage.copy(error = describe(e))) }
+            } finally {
+                if (run != mileageRun) {
+                    // A newer check (or a new connection) owns the state now.
+                } else if (cancelled) {
+                    // Left the screen or disconnected: the next visit reads again.
+                    _state.update { it.copy(mileage = MileageState()) }
+                } else {
+                    val notes = runCatching { s.counterNotes() }.getOrDefault(emptyList())
+                    _state.update { st ->
+                        val readings = st.mileage.readings
+                        val check = if (st.mileage.error == null) MileageAnalyzer().analyze(readings, notes) else null
+                        st.copy(mileage = st.mileage.copy(running = false, check = check))
+                    }
+                }
+            }
+        }
+    }
 
     // ---------------------------------------------------------------- ECU detail
 

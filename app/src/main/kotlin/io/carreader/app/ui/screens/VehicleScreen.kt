@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
@@ -84,6 +85,7 @@ fun VehicleScreen(state: UiState, vm: MainViewModel) {
             BigButton(stringResource(R.string.faults_title), icon = Icons.Filled.ReportProblem) { vm.navigate(Screen.FaultCodes) }
             BigButton(stringResource(R.string.readiness_title), icon = Icons.Filled.Checklist) { vm.navigate(Screen.Readiness) }
             BigButton(stringResource(R.string.modules_title), icon = Icons.Filled.Memory) { vm.navigate(Screen.Modules) }
+            BigButton(stringResource(R.string.mileage_title), icon = Icons.Filled.FactCheck) { vm.navigate(Screen.Mileage) }
 
             state.connected?.let { connected ->
                 Section(title = stringResource(R.string.vehicle_adapter)) {
