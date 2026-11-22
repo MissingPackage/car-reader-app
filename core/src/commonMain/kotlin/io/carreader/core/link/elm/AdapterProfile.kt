@@ -33,20 +33,29 @@ data class AdapterProfile(
     companion object {
         private val ELM_VERSION = Regex("ELM327\\s*v?(\\d+\\.\\d+[a-z]?)", RegexOption.IGNORE_CASE)
         private val SIM_MARKER = Regex("SIMULATOR", RegexOption.IGNORE_CASE)
+        private val STN_ID = Regex("^STN\\d{4}", RegexOption.IGNORE_CASE)
+
+        /** True when an `STI` answer is a real STN firmware id (`STN1110 v4.2.1`, `STN2255 v5.10.3`). */
+        fun isStnId(sti: String?): Boolean = sti != null && STN_ID.containsMatchIn(sti.trim())
 
         /**
-         * Classifies the chip. STN: `STI` answered. SIMULATOR: any identity string says so. Otherwise ELM327:
-         * v1.5 and v2.1 never shipped as genuine firmware in volume and are the classic clone identities;
-         * genuine ELM327 is end-of-life (2022, last firmware v2.3), so any ELM327 identity without ST support
-         * is reported with a "likely clone" note, never as a certainty.
+         * Classifies the chip. Nothing here trusts free text for capabilities:
+         * - SIMULATOR only when the transport itself is the in-process simulator ([simulated], from
+         *   `Transport.isSimulated`) and identifies as such; a real adapter whose identity text says
+         *   "simulator" is classified like any other ELM327 (never certified because of it).
+         * - STN only when `STI` answered an STN firmware id (`^STN\d{4}`); any other `STI` text (a clone
+         *   answering `OK`, a stale line) is ignored.
+         * - Otherwise ELM327: v1.5 and v2.1 never shipped as genuine firmware in volume and are the classic
+         *   clone identities; genuine ELM327 is end-of-life (2022, last firmware v2.3), so any ELM327 identity
+         *   without ST support is reported with a "likely clone" note, never as a certainty.
          */
-        fun classify(identity: AdapterIdentity): AdapterProfile {
+        fun classify(identity: AdapterIdentity, simulated: Boolean = false): AdapterProfile {
             val version = identity.ati?.let { ELM_VERSION.find(it)?.groupValues?.get(1) }
-            val all = listOfNotNull(identity.ati, identity.at1, identity.sti, identity.stdi)
-            if (all.any { SIM_MARKER.containsMatchIn(it) }) {
-                return AdapterProfile(AdapterChip.SIMULATOR, version, supportsStCommands = identity.sti != null)
+            val stn = isStnId(identity.sti)
+            if (simulated && listOfNotNull(identity.ati, identity.at1).any { SIM_MARKER.containsMatchIn(it) }) {
+                return AdapterProfile(AdapterChip.SIMULATOR, version, supportsStCommands = stn)
             }
-            if (identity.sti != null) {
+            if (stn) {
                 return AdapterProfile(AdapterChip.STN, version, supportsStCommands = true)
             }
             if (version == null) {
@@ -76,8 +85,10 @@ data class AdapterProfile(
     val certified: Boolean get() = chip == AdapterChip.STN || chip == AdapterChip.SIMULATOR
 
     fun toAdapterInfo(identity: AdapterIdentity, supportsVoltage: Boolean, supportsHeaders: Boolean, extraNotes: List<String>): AdapterInfo {
-        val name = identity.stdi ?: identity.at1?.takeIf { it.isNotBlank() } ?: identity.ati ?: "Unknown adapter"
-        val firmware = identity.sti ?: elmVersion?.let { "ELM327 v$it" }
+        // STI/STDI text is shown only for a verified STN chip.
+        val stn = isStnId(identity.sti)
+        val name = identity.stdi?.takeIf { stn } ?: identity.at1?.takeIf { it.isNotBlank() } ?: identity.ati ?: "Unknown adapter"
+        val firmware = identity.sti?.takeIf { stn } ?: elmVersion?.let { "ELM327 v$it" }
         return AdapterInfo(
             identity = name,
             firmware = firmware,

@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.withLock
  */
 class SimTransport(val scenario: SimScenario) : Transport {
     override val description: String = "Simulator: ${scenario.name}"
+    override val isSimulated: Boolean get() = true
 
     private val lock = Mutex()
     private val output = StringBuilder()

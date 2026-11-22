@@ -8,6 +8,12 @@ interface Transport {
     /** Human-readable label for UI and logs, e.g. "OBDLink MX+ (00:04:3E:...)". */
     val description: String
 
+    /**
+     * True only for the app's in-process simulator. The driver classifies an adapter as SIMULATOR (and so
+     * certified) from this flag, never from identity text, which any real adapter could print.
+     */
+    val isSimulated: Boolean get() = false
+
     suspend fun connect()
 
     suspend fun write(data: ByteArray)

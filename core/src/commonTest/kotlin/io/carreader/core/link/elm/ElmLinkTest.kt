@@ -68,9 +68,15 @@ class ElmLinkTest {
     }
 
     @Test
-    fun simulatorIdentityIsCertified() = runTest {
-        val t = cloneAdapter().on("AT@1", "Car Reader Simulator")
-        val info = ElmLink(t).initialize()
+    fun simulatorIdentityIsCertifiedOnlyOnTheSimulatedTransport() = runTest {
+        val real = ElmLink(cloneAdapter().on("AT@1", "Car Reader Simulator")).initialize()
+        assertEquals(AdapterChip.ELM327_CLONE, real.chip)
+        assertEquals(false, real.certified)
+
+        val sim = ScriptedTransport(echo = true, simulated = true)
+            .on("ATZ", "\nELM327 v2.3").on("ATI", "ELM327 v2.3").on("AT@1", "Car Reader Simulator")
+            .on("STI", "?").on("STDI", "?").on("0100", "7E8 06 41 00 BE 3F A8 13 00").on("ATDPN", "A6")
+        val info = ElmLink(sim).initialize()
         assertEquals(AdapterChip.SIMULATOR, info.chip)
         assertTrue(info.certified)
     }

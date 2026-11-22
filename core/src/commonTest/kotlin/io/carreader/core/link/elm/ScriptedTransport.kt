@@ -8,8 +8,9 @@ import kotlinx.coroutines.delay
  * repeats). Unscripted AT/ST commands answer `OK`, anything else `NO DATA`. Answers are written the way an
  * ELM327 prints them: lines ending in CR, then a blank line and the `>` prompt.
  */
-class ScriptedTransport(private val echo: Boolean = false) : Transport {
+class ScriptedTransport(private val echo: Boolean = false, private val simulated: Boolean = false) : Transport {
     override val description = "scripted"
+    override val isSimulated: Boolean get() = simulated
     private val scripts = HashMap<String, ArrayDeque<String>>()
     private val pending = StringBuilder()
     val sent = ArrayList<String>()

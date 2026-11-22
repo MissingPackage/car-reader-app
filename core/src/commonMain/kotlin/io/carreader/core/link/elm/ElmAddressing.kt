@@ -17,13 +17,35 @@ data class ElmSetting(val key: Key, val value: String, val command: String) {
  * - physical 0x7E0-0x7E7: automatic flow control works (the adapter answers 0x7E8-0x7EF itself), receive
  *   filter `ATCRA <response id>` when known;
  * - any other physical id: explicit flow control `ATFCSH <request id>`, `ATFCSD 300000`, `ATFCSM1`, then
- *   `ATCRA <response id>`. Without it the ECU sends only the first frame of a long answer;
+ *   `ATCRA <response id>`. Without it the ECU sends only the first frame of a long answer. STmin is 0
+ *   (`ATFCSD300000`) until the adapter reports `BUFFER FULL`, then [RAISED_STMIN] (`ATFCSD30000A`);
  * - 29-bit: `ATCP <priority>` + `ATSH <low 24 bits>`, automatic flow control (the adapter handles 18DAF1xx).
  * - timing: `ATST32` (about 200 ms, the adapter default) for OBD services 0x01-0x0A, longer for UDS/KWP
  *   requests (`ATSTFF` = about 1 s) since ECUs take longer to answer them.
  */
 class ElmAddressing {
     private val current = HashMap<ElmSetting.Key, String>()
+
+    /**
+     * STmin (ISO-TP separation time, ms) the adapter asks for in its flow control frames. 0 = as fast as the
+     * ECU can; raised once after `BUFFER FULL` (slow clones cannot print back-to-back frames). Survives
+     * [reset]: it describes the adapter, not its settings.
+     */
+    var flowControlStmin: Int = 0
+        private set
+
+    /** Raises STmin after a `BUFFER FULL`. Returns false when it was already raised (do not retry again). */
+    fun raiseStmin(): Boolean {
+        if (flowControlStmin >= RAISED_STMIN) return false
+        flowControlStmin = RAISED_STMIN
+        return true
+    }
+
+    /** True when [plan] for this target uses explicit flow control (ATFCSH/ATFCSD/ATFCSM1). */
+    fun usesExplicitFlowControl(target: EcuAddress, extendedBus: Boolean): Boolean {
+        val r = runCatching { resolve(target, extendedBus) }.getOrNull() ?: return false
+        return !r.extended && !r.functional && r.requestId !in OBD_PHYSICAL
+    }
 
     /** Forget every cached value, then record the adapter defaults after `ATZ`. */
     fun reset() {
@@ -73,7 +95,8 @@ class ElmAddressing {
                         throw LinkException("Adapter cannot set CAN flow control (ATFCSH): ECU 0x$header is unreachable with it")
                     }
                     wanted += ElmSetting(ElmSetting.Key.FC_HEADER, header, "ATFCSH$header")
-                    wanted += ElmSetting(ElmSetting.Key.FC_DATA, "300000", "ATFCSD300000")
+                    val fcData = "3000" + flowControlStmin.toString(16).uppercase().padStart(2, '0')
+                    wanted += ElmSetting(ElmSetting.Key.FC_DATA, fcData, "ATFCSD$fcData")
                     wanted += fcMode("1")
                     wanted += receiveFilter(resolved.responseId?.toString(16)?.uppercase()?.padStart(3, '0'), profile)
                 }
@@ -97,6 +120,8 @@ class ElmAddressing {
 
     companion object {
         const val AUTO = "auto"
+        /** STmin after a BUFFER FULL: 10 ms between consecutive frames. */
+        const val RAISED_STMIN = 0x0A
         val OBD_PHYSICAL = 0x7E0..0x7E7
         const val FUNCTIONAL_11 = 0x7DF
         const val FUNCTIONAL_29 = 0x18DB33F1
