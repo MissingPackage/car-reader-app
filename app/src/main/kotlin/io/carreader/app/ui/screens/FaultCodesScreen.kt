@@ -32,7 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.carreader.app.R
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
@@ -61,7 +63,15 @@ fun FaultCodesScreen(state: UiState, vm: MainViewModel) {
                     Tab(
                         selected = tab == i,
                         onClick = { tab = i },
-                        text = { Text(sourceLabel(source) + (count?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.labelLarge) },
+                        text = {
+                            Text(
+                                sourceLabel(source) + (count?.let { "\n($it)" } ?: ""),
+                                // One step below labelLarge so "Memorizzati" fits a third of a phone screen.
+                                style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                            )
+                        },
                     )
                 }
             }

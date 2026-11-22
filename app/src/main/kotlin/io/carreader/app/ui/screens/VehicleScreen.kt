@@ -3,6 +3,8 @@ package io.carreader.app.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -85,6 +87,12 @@ fun VehicleScreen(state: UiState, vm: MainViewModel) {
                 }
             }
 
+            // The everyday actions come before the technical adapter details.
+            BigButton(stringResource(R.string.live_title), icon = Icons.Filled.Speed) { vm.navigate(Screen.LiveData) }
+            BigButton(stringResource(R.string.faults_title), icon = Icons.Filled.ReportProblem) { vm.navigate(Screen.FaultCodes) }
+            BigButton(stringResource(R.string.readiness_title), icon = Icons.Filled.Checklist) { vm.navigate(Screen.Readiness) }
+            BigButton(stringResource(R.string.modules_title), icon = Icons.Filled.Memory) { vm.navigate(Screen.Modules) }
+
             state.connected?.let { connected ->
                 Section(title = stringResource(R.string.vehicle_adapter)) {
                     val a = connected.adapter
@@ -97,23 +105,20 @@ fun VehicleScreen(state: UiState, vm: MainViewModel) {
                 }
             }
 
-            BigButton(stringResource(R.string.live_title), icon = Icons.Filled.Speed) { vm.navigate(Screen.LiveData) }
-            BigButton(stringResource(R.string.faults_title), icon = Icons.Filled.ReportProblem) { vm.navigate(Screen.FaultCodes) }
-            BigButton(stringResource(R.string.readiness_title), icon = Icons.Filled.Checklist) { vm.navigate(Screen.Readiness) }
-            BigButton(stringResource(R.string.modules_title), icon = Icons.Filled.Memory) { vm.navigate(Screen.Modules) }
-            OutlinedButton(onClick = { vm.navigate(Screen.Log) }, modifier = Modifier.padding(top = 4.dp)) {
+            val secondary = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            OutlinedButton(onClick = { vm.navigate(Screen.Log) }, modifier = secondary.padding(top = 4.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = null)
                 Text("  " + stringResource(R.string.log_title))
             }
-            OutlinedButton(onClick = { vm.navigate(Screen.Settings) }) {
+            OutlinedButton(onClick = { vm.navigate(Screen.Settings) }, modifier = secondary) {
                 Icon(Icons.Filled.Settings, contentDescription = null)
                 Text("  " + stringResource(R.string.settings_title))
             }
-            OutlinedButton(onClick = { vm.navigate(Screen.About) }) {
+            OutlinedButton(onClick = { vm.navigate(Screen.About) }, modifier = secondary) {
                 Icon(Icons.Filled.Info, contentDescription = null)
                 Text("  " + stringResource(R.string.about_title))
             }
-            OutlinedButton(onClick = vm::disconnect) { Text(stringResource(R.string.action_disconnect)) }
+            OutlinedButton(onClick = vm::disconnect, modifier = secondary) { Text(stringResource(R.string.action_disconnect)) }
         }
     }
 }

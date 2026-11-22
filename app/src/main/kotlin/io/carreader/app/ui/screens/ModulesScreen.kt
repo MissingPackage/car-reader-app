@@ -32,6 +32,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.ScanNote
 import io.carreader.app.ui.Screen
@@ -79,7 +80,7 @@ fun ModulesScreen(state: UiState, vm: MainViewModel) {
                 }
             }
             scan.notes.forEach { note -> item { WarningBox(noteText(note)) } }
-            scan.brandNotes.forEach { note -> item { WarningBox(note) } }
+            scan.brandNotes.forEach { note -> item { WarningBox(CoreText.brandNote(note)) } }
             scan.error?.let { err -> item { ErrorText(stringResource(R.string.modules_scan_failed, err), onRetry = vm::startScan) } }
             if (!scan.running && scan.started && scan.reports.isEmpty() && scan.error == null) {
                 item { EmptyText(stringResource(R.string.modules_none)) }

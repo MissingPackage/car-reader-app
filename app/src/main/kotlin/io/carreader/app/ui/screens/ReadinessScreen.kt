@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.carreader.app.R
+import io.carreader.app.ui.CoreText
 import io.carreader.app.ui.Loadable
 import io.carreader.app.ui.MainViewModel
 import io.carreader.app.ui.UiState
@@ -75,7 +76,8 @@ fun ReadinessScreen(state: UiState, vm: MainViewModel) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(icon, contentDescription = null, tint = color)
                                 Spacer(Modifier.width(12.dp))
-                                Text(m.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Text(CoreText.monitor(m.name), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(12.dp))
                                 Text(label, style = MaterialTheme.typography.bodyMedium, color = color)
                             }
                         }

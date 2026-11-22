@@ -136,13 +136,13 @@ class PreviewVehicleSession(
         monitors = listOf(
             MonitorStatus("Misfire", supported = true, complete = true),
             MonitorStatus("Fuel system", supported = true, complete = true),
-            MonitorStatus("Components", supported = true, complete = true),
+            MonitorStatus("Comprehensive components", supported = true, complete = true),
             MonitorStatus("NMHC catalyst", supported = true, complete = false),
-            MonitorStatus("NOx/SCR aftertreatment", supported = true, complete = false),
+            MonitorStatus("NOx / SCR aftertreatment", supported = true, complete = false),
             MonitorStatus("Boost pressure", supported = true, complete = true),
             MonitorStatus("Exhaust gas sensor", supported = true, complete = true),
-            MonitorStatus("PM filter", supported = true, complete = true),
-            MonitorStatus("EGR/VVT system", supported = true, complete = true),
+            MonitorStatus("Particulate filter", supported = true, complete = true),
+            MonitorStatus("EGR / VVT system", supported = true, complete = true),
             MonitorStatus("Heated catalyst", supported = false, complete = false),
         ),
     )

@@ -210,6 +210,28 @@ S = [
 ("cleared_emission","Fault codes cleared. If the fault is still there, the code comes back after a short drive.","Codici di errore cancellati. Se il guasto c'è ancora, il codice ritornerà dopo un breve tragitto."),
 ("cleared_ecu","The module's fault codes were cleared.","I codici di errore della centralina sono stati cancellati."),
 ("clear_failed","The car did not confirm the clear. Try again with the engine off and the ignition on.","L'auto non ha confermato la cancellazione. Riprova con il motore spento e il quadro acceso."),
+
+("confirm_target_all_emission","All emission control units","Tutte le centraline delle emissioni"),
+("confirm_desc_clear_emission","Clears stored and pending fault codes and freeze frames, turns off the engine warning light and resets the readiness monitors.","Cancella i codici di errore memorizzati e in attesa e i dati al momento del guasto, spegne la spia motore e azzera i monitor di prontezza."),
+("confirm_desc_clear_ecu","Clears the fault memory of this control unit.","Cancella la memoria guasti di questa centralina."),
+("note_vag_tp20","Only the engine-side control units answered. This car probably reaches its other control units through VW TP2.0 (KWP2000), used before MQB/MLB-evo (e.g. Passat B6/B7, Q5 8R). ELM327 adapters cannot speak TP2.0, so those control units are not supported yet.","Hanno risposto solo le centraline del motore. Probabilmente quest'auto raggiunge le altre centraline tramite VW TP2.0 (KWP2000), usato prima di MQB/MLB-evo (ad es. Passat B6/B7, Q5 8R). Gli adattatori ELM327 non supportano TP2.0, quindi queste centraline non sono ancora supportate."),
+("note_vag_kline","This car does not use CAN for diagnostics: VAG control units on K-line (KW1281/KWP2000) are not supported yet.","Quest'auto non usa il CAN per la diagnosi: le centraline VAG su linea K (KW1281/KWP2000) non sono ancora supportate."),
+("monitor_misfire","Misfire","Mancate accensioni"),
+("monitor_fuel_system","Fuel system","Sistema di alimentazione"),
+("monitor_components","Comprehensive components","Componenti generali"),
+("monitor_catalyst","Catalyst","Catalizzatore"),
+("monitor_heated_catalyst","Heated catalyst","Catalizzatore riscaldato"),
+("monitor_evap","Evaporative system","Sistema evaporativo (EVAP)"),
+("monitor_secondary_air","Secondary air system","Aria secondaria"),
+("monitor_gpf","Gasoline particulate filter","Filtro antiparticolato benzina (GPF)"),
+("monitor_o2_sensor","Oxygen sensor","Sonda lambda"),
+("monitor_o2_heater","Oxygen sensor heater","Riscaldatore sonda lambda"),
+("monitor_egr_vvt","EGR / VVT system","Sistema EGR / VVT"),
+("monitor_nmhc_catalyst","NMHC catalyst","Catalizzatore NMHC"),
+("monitor_nox_scr","NOx / SCR aftertreatment","Trattamento NOx / SCR"),
+("monitor_boost","Boost pressure","Pressione di sovralimentazione"),
+("monitor_exhaust_sensor","Exhaust gas sensor","Sensore gas di scarico"),
+("monitor_pm_filter","Particulate filter","Filtro antiparticolato (DPF)"),
 ]
 PLURALS = [("modules_dtc_count", {"one":("%1$d fault code","%1$d codice di errore"), "other":("%1$d fault codes","%1$d codici di errore")})]
 IT_EXTRA = {"modules_dtc_count": {"many": "%1$d codici di errore"}}

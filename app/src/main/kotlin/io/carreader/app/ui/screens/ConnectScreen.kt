@@ -264,12 +264,12 @@ private fun DeviceCard(device: DeviceEntry, enabled: Boolean, onClick: () -> Uni
             Column(Modifier.weight(1f)) {
                 Text(device.displayName, style = MaterialTheme.typography.titleMedium)
                 Text(device.address, style = MaterialTheme.typography.bodyMedium)
+                val kind = when (device.kind) {
+                    DeviceKind.BLE -> stringResource(R.string.device_kind_ble)
+                    DeviceKind.CLASSIC, DeviceKind.DUAL -> stringResource(R.string.device_kind_classic)
+                }
+                AssistChip(onClick = onClick, enabled = enabled, label = { Text(if (obd) stringResource(R.string.device_obd, kind) else kind) })
             }
-            val kind = when (device.kind) {
-                DeviceKind.BLE -> stringResource(R.string.device_kind_ble)
-                DeviceKind.CLASSIC, DeviceKind.DUAL -> stringResource(R.string.device_kind_classic)
-            }
-            AssistChip(onClick = onClick, enabled = enabled, label = { Text(if (obd) stringResource(R.string.device_obd, kind) else kind) })
         }
     }
 }

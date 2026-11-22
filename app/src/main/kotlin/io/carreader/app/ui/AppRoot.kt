@@ -76,8 +76,8 @@ private fun ConfirmationDialog(p: DialogConfirmationPort.PendingConfirmation, po
         title = { Text(CoreText.kind(p.request.kind)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.confirm_target, p.request.targetLabel), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                Text(p.request.description, style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.confirm_target, CoreText.target(p.request.targetLabel)), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                Text(CoreText.description(p.request.description), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.confirm_checks), style = MaterialTheme.typography.titleSmall)
                 p.checks.forEach { (name, result) ->
                     val (icon, color, detail) = when (result) {

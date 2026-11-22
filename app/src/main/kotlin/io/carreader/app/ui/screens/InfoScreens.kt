@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -54,6 +56,7 @@ fun SettingsScreen(state: UiState, vm: MainViewModel) {
             Section {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_mutations), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(16.dp))
                     Switch(
                         checked = state.mutationsEnabled,
                         onCheckedChange = { on -> if (on) confirmEnable = true else vm.setMutationsEnabled(false) },
