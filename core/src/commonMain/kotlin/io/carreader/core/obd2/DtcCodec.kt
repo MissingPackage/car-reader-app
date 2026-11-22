@@ -21,7 +21,9 @@ object DtcCodec {
         if (code.length != 5) return null
         val system = systems.indexOf(code[0].uppercaseChar())
         val first = code[1].digitToIntOrNull() ?: return null
-        val rest = code.substring(2).toIntOrNull(16) ?: return null
+        val digits = code.substring(2)
+        if (!digits.all { it.isDigit() || it.uppercaseChar() in 'A'..'F' }) return null
+        val rest = digits.toInt(16)
         if (system < 0 || first !in 0..3) return null
         return (system shl 14) or (first shl 12) or rest
     }

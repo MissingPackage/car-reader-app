@@ -4,6 +4,13 @@ package io.carreader.core.link
  * Port: an adapter driver that delivers diagnostic requests to ECUs and returns their reassembled responses.
  * ELM327/STN is the first implementation; J2534 or native CAN interfaces can implement it later.
  *
+ * Concurrency: [request] is atomic. Implementations serialize calls (a mutex covering header/filter setup AND
+ * the exchange), so concurrent callers can never send a payload to an address set up by another caller.
+ *
+ * Addressing scope (phase 1-2): ISO 15765-4 CAN (11/29 bit) and the default OBD functional address on
+ * K-line/J1850. Physical KWP2000 on K-line and VW TP2.0 need an addressing extension of [EcuAddress]
+ * (planned as a transport field) before brand modules can reach those ECUs.
+ *
  * Payloads never include transport framing (no ISO-TP PCI, no CAN header): a request is the service id plus
  * its parameters (e.g. `01 0C`), a response is the positive or negative response (e.g. `41 0C 1A F8`).
  */

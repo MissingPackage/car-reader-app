@@ -14,7 +14,7 @@ class BatteryVoltageCheck(private val minimumVolts: Double = 12.0) : SafetyCheck
     override val name = "Battery voltage ≥ $minimumVolts V"
     override suspend fun evaluate(request: MutationRequest, context: GuardContext): CheckResult {
         val v = context.batteryVoltage() ?: return CheckResult.Fail("Battery voltage unavailable")
-        return if (v >= minimumVolts) CheckResult.Pass else CheckResult.Fail("Battery voltage too low (${"%.1f".formatCompat(v)} V)")
+        return if (v >= minimumVolts) CheckResult.Pass else CheckResult.Fail("Battery voltage too low (${formatVolts(v)} V)")
     }
 }
 
@@ -32,19 +32,25 @@ class AdapterCapabilityCheck : SafetyCheck {
     }
 }
 
-/** Engine off is recommended for clearing DTCs; failing it blocks writes/routines, only warns for clears. */
+/**
+ * Engine off, ignition on. A running engine always blocks. No RPM answer is ambiguous (engine off, lost frame,
+ * PID unsupported): it blocks writes and routines, and only warns for DTC clears.
+ */
 class EngineOffCheck : SafetyCheck {
     override val name = "Engine off"
     override suspend fun evaluate(request: MutationRequest, context: GuardContext): CheckResult {
-        val rpm = context.engineRpm() ?: return CheckResult.Pass // no answer usually means engine off
-        return if (rpm == 0) CheckResult.Pass else CheckResult.Fail("Engine running ($rpm rpm): switch it off, keep ignition on")
+        val rpm = context.engineRpm()
+        val clear = request.kind == MutationKind.CLEAR_EMISSION_DTC || request.kind == MutationKind.CLEAR_ECU_DTC
+        return when {
+            rpm == null && clear -> CheckResult.Warn("Engine speed unavailable: make sure the engine is off")
+            rpm == null -> CheckResult.Fail("Engine speed unavailable: cannot confirm the engine is off")
+            rpm == 0 -> CheckResult.Pass
+            else -> CheckResult.Fail("Engine running ($rpm rpm): switch it off, keep ignition on")
+        }
     }
 }
 
-internal fun String.formatCompat(v: Double): String {
-    val rounded = kotlin.math.round(v * 10) / 10.0
-    return rounded.toString()
-}
+internal fun formatVolts(v: Double): String = (kotlin.math.round(v * 10) / 10.0).toString()
 
 object StandardChecks {
     fun all(): List<SafetyCheck> = listOf(VehicleStationaryCheck(), EngineOffCheck(), BatteryVoltageCheck(), AdapterCapabilityCheck())

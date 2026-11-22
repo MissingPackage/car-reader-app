@@ -6,28 +6,36 @@ import io.carreader.core.link.DiagnosticLink
 import io.carreader.core.link.EcuAddress
 import io.carreader.core.link.EcuResponse
 import io.carreader.core.link.RequestOptions
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
-/** What a mutating operation does, for checks, confirmation text and the audit log. */
-enum class MutationKind(val label: String) {
-    CLEAR_EMISSION_DTC("Clear OBD-II emission DTCs (service 04)"),
-    CLEAR_ECU_DTC("Clear ECU DTCs (UDS 14 / KWP 14)"),
-    WRITE_DATA("Write data by identifier (UDS 2E)"),
-    ROUTINE("Routine control (UDS 31)"),
+/** What a mutating operation does, for checks, confirmation text, the audit log and the permit scope. */
+enum class MutationKind(val label: String, val serviceIds: Set<Int>) {
+    CLEAR_EMISSION_DTC("Clear OBD-II emission DTCs (service 04)", setOf(0x04)),
+    CLEAR_ECU_DTC("Clear ECU DTCs (UDS/KWP 14)", setOf(0x14)),
+    WRITE_DATA("Write data by identifier (UDS 2E)", setOf(0x2E)),
+    ROUTINE("Routine control (UDS 31)", setOf(0x31)),
 }
 
 data class MutationRequest(
     val kind: MutationKind,
-    /** Who is affected, e.g. "Engine (7E0)" or "All emission ECUs". */
-    val target: String,
+    /** The only address the permit lets the mutating service reach. */
+    val target: EcuAddress,
+    /** Who is affected, for people, e.g. "01 Engine (7E0)" or "All emission ECUs". */
+    val targetLabel: String,
     /** One-line human description shown in the confirmation dialog. */
     val description: String,
 )
 
-/** Result of one safety check. */
+/** Result of one safety check. [Warn] is shown to the user but does not block. */
 sealed interface CheckResult {
     data object Pass : CheckResult
+    data class Warn(val reason: String) : CheckResult
     data class Fail(val reason: String) : CheckResult
 }
 
@@ -37,7 +45,7 @@ interface SafetyCheck {
     suspend fun evaluate(request: MutationRequest, context: GuardContext): CheckResult
 }
 
-/** Read-only view the checks use to probe the vehicle. It goes through the raw link, never the gate. */
+/** Read-only view the checks use to probe the vehicle. Read requests pass the gate without a permit. */
 interface GuardContext {
     val adapter: AdapterInfo?
     val busProtocol: BusProtocol?
@@ -51,9 +59,9 @@ fun interface ConfirmationPort {
     suspend fun confirm(request: MutationRequest, checks: List<Pair<String, CheckResult>>): Boolean
 }
 
-/** Port: durable record of every mutation attempt and its outcome. */
+/** Port: durable record of every mutation attempt and its outcome. Failures to record never change the outcome. */
 fun interface AuditLog {
-    fun record(event: AuditEvent)
+    suspend fun record(event: AuditEvent)
 }
 
 data class AuditEvent(
@@ -63,20 +71,46 @@ data class AuditEvent(
     val checks: List<Pair<String, CheckResult>> = emptyList(),
 )
 
-/** User-level switch. Defaults to disabled: the first test builds run on real cars. */
+/** User-level switch. Implementations must default to disabled: test builds run on real cars. */
 interface GuardPolicy {
     val mutationsEnabled: Boolean
-    fun allows(kind: MutationKind): Boolean = mutationsEnabled && kind in allowedKinds
     val allowedKinds: Set<MutationKind>
+    fun allows(kind: MutationKind): Boolean = mutationsEnabled && kind in allowedKinds
+
+    /** Never allows anything. */
+    object Disabled : GuardPolicy {
+        override val mutationsEnabled = false
+        override val allowedKinds = emptySet<MutationKind>()
+    }
 }
 
-class GuardDenied(val request: MutationRequest, val reasons: List<String>) :
-    Exception("Blocked ${request.kind}: ${reasons.joinToString("; ")}")
+/**
+ * Policy of the first test builds: only DTC clears can ever be enabled, and only when the user switched the
+ * setting on. Writes and routines stay impossible whatever the setting says.
+ */
+class ClearOnlyPolicy(private val enabled: () -> Boolean) : GuardPolicy {
+    override val mutationsEnabled: Boolean get() = enabled()
+    override val allowedKinds = setOf(MutationKind.CLEAR_EMISSION_DTC, MutationKind.CLEAR_ECU_DTC)
+}
+
+class GuardDenied(val request: MutationRequest?, val reasons: List<String>) :
+    Exception("Blocked ${request?.kind ?: "request"}: ${reasons.joinToString("; ")}")
 
 /**
- * The single gate for every mutating request. [GatedLink] (handed to all upper layers) refuses mutating
- * service ids unless they run inside [execute], which first runs the policy, every [SafetyCheck], then the
- * user confirmation, and audits the outcome.
+ * Proof, carried in the coroutine context, that [WriteGuard.execute] approved one mutation. It is scoped to
+ * the coroutine running the action (not global), to the approved service ids and to the approved target.
+ */
+class MutationPermit internal constructor(val request: MutationRequest, internal val guard: WriteGuard) :
+    AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<MutationPermit>
+
+    fun covers(target: EcuAddress, sid: Int): Boolean = sid in request.kind.serviceIds && target == request.target
+}
+
+/**
+ * The single gate for every mutating request. [GatedLink] (handed to all upper layers) refuses state-changing
+ * requests unless they run inside [execute], which runs the policy, every [SafetyCheck], the user confirmation,
+ * every check again (the dialog may stay open for minutes), and audits every exit.
  */
 class WriteGuard(
     private val policy: GuardPolicy,
@@ -86,83 +120,138 @@ class WriteGuard(
     private val clock: () -> Long,
 ) {
     private val mutex = Mutex()
-    internal var permit: MutationRequest? = null
-        private set
 
-    suspend fun <T> execute(request: MutationRequest, context: GuardContext, action: suspend () -> T): T = mutex.withLock {
-        if (!policy.allows(request.kind)) {
-            audit.record(AuditEvent(clock(), request, "denied: disabled in settings"))
-            throw GuardDenied(request, listOf("Operations that modify the vehicle are disabled in Settings"))
-        }
-        val results = checks.map { it.name to it.evaluate(request, context) }
-        val failures = results.mapNotNull { (_, r) -> (r as? CheckResult.Fail)?.reason }
-        if (failures.isNotEmpty()) {
-            audit.record(AuditEvent(clock(), request, "denied: checks failed", results))
-            throw GuardDenied(request, failures)
-        }
-        if (!confirmation.confirm(request, results)) {
-            audit.record(AuditEvent(clock(), request, "cancelled by user", results))
-            throw GuardDenied(request, listOf("Cancelled by user"))
-        }
-        permit = request
-        try {
-            val value = action()
-            audit.record(AuditEvent(clock(), request, "executed", results))
-            value
-        } catch (t: Throwable) {
-            audit.record(AuditEvent(clock(), request, "failed: ${t.message}", results))
-            throw t
-        } finally {
-            permit = null
+    suspend fun <T> execute(request: MutationRequest, context: GuardContext, action: suspend () -> T): T {
+        check(currentCoroutineContext()[MutationPermit] == null) { "Nested WriteGuard.execute is not allowed" }
+        return mutex.withLock {
+            var results: List<Pair<String, CheckResult>> = emptyList()
+            var executed = false
+            try {
+                if (!policy.allows(request.kind)) {
+                    throw GuardDenied(request, listOf("Operations that modify the vehicle are disabled in Settings"))
+                }
+                results = runChecks(request, context)
+                if (!confirmation.confirm(request, results)) {
+                    throw GuardDenied(request, listOf("Cancelled by user"))
+                }
+                results = runChecks(request, context)
+                val value = withContext(MutationPermit(request, this)) { action() }
+                executed = true
+                safeAudit(AuditEvent(clock(), request, "executed", results))
+                value
+            } catch (e: Throwable) {
+                if (!executed) {
+                    val outcome = when (e) {
+                        is GuardDenied -> "denied: ${e.reasons.joinToString("; ")}"
+                        is CancellationException -> "cancelled"
+                        else -> "failed: ${e::class.simpleName}: ${e.message}"
+                    }
+                    safeAudit(AuditEvent(clock(), request, outcome, results))
+                }
+                throw e
+            }
         }
     }
 
-    /** Called by [GatedLink]; true only inside [execute] after every check passed. */
-    internal fun isPermitted(): Boolean = permit != null
+    private suspend fun runChecks(request: MutationRequest, context: GuardContext): List<Pair<String, CheckResult>> {
+        val results = checks.map { check ->
+            val result = try {
+                check.evaluate(request, context)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                CheckResult.Fail("${check.name}: could not be verified (${e.message})")
+            }
+            check.name to result
+        }
+        val failures = results.mapNotNull { (_, r) -> (r as? CheckResult.Fail)?.reason }
+        if (failures.isNotEmpty()) throw GuardDenied(request, failures)
+        return results
+    }
+
+    internal suspend fun recordGateDenial(target: EcuAddress, sid: Int) {
+        val request = MutationRequest(
+            MutationKind.entries.firstOrNull { sid in it.serviceIds } ?: MutationKind.WRITE_DATA,
+            target,
+            "0x${target.requestId.toString(16).uppercase()}",
+            "Unguarded state-changing request, service 0x${sid.toString(16).uppercase()}",
+        )
+        safeAudit(AuditEvent(clock(), request, "denied at gate"))
+    }
+
+    private suspend fun safeAudit(event: AuditEvent) {
+        try {
+            audit.record(event)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // An audit failure must never turn a successful operation into a reported failure (or vice versa).
+        }
+    }
 }
 
 /**
  * Decorator over the adapter driver: the only [DiagnosticLink] the rest of the app receives.
- * Mutating service ids are refused unless a [WriteGuard.execute] block is active.
+ * Implemented explicitly (no delegation) so any new port method must be gated consciously.
  */
-class GatedLink(private val inner: DiagnosticLink, private val guard: WriteGuard) : DiagnosticLink by inner {
+class GatedLink(private val inner: DiagnosticLink, private val guard: WriteGuard) : GatedDiagnosticLink {
+    override suspend fun initialize() = inner.initialize()
+    override val busProtocol get() = inner.busProtocol
+    override val adapterInfo get() = inner.adapterInfo
+    override suspend fun readBatteryVoltage() = inner.readBatteryVoltage()
+    override suspend fun close() = inner.close()
+
     override suspend fun request(target: EcuAddress, payload: ByteArray, options: RequestOptions): List<EcuResponse> {
-        if (payload.isNotEmpty() && MutatingServices.isMutating(payload) && !guard.isPermitted()) {
-            throw GuardDenied(
-                MutationRequest(MutationKind.WRITE_DATA, "0x${target.requestId.toString(16)}", "Unguarded mutating request"),
-                listOf("Service 0x${(payload[0].toInt() and 0xFF).toString(16)} must go through WriteGuard"),
-            )
+        require(payload.isNotEmpty()) { "Empty diagnostic request" }
+        if (!ReadOnlyServices.isReadOnly(payload)) {
+            val sid = payload[0].toInt() and 0xFF
+            val permit = currentCoroutineContext()[MutationPermit]
+            if (permit == null || permit.guard !== guard || !permit.covers(target, sid)) {
+                guard.recordGateDenial(target, sid)
+                throw GuardDenied(
+                    permit?.request,
+                    listOf("Service 0x${sid.toString(16).uppercase()} to 0x${target.requestId.toString(16).uppercase()} is not covered by an approved operation"),
+                )
+            }
         }
         return inner.request(target, payload, options)
     }
 }
 
-/** Service ids that can change ECU state. Deny-list kept deliberately broad. */
-object MutatingServices {
-    private val ids = setOf(
-        0x04, // OBD clear DTC / MIL
-        0x08, // OBD on-board control
-        0x11, // UDS ECUReset
-        0x14, // UDS/KWP ClearDiagnosticInformation
-        0x27, // SecurityAccess
-        0x28, // CommunicationControl
-        0x29, // Authentication
-        0x2E, // WriteDataByIdentifier
-        0x2F, // InputOutputControlByIdentifier
-        0x31, // RoutineControl
-        0x34, 0x35, 0x36, 0x37, 0x38, // transfer / download / upload
-        0x3B, // KWP WriteDataByLocalIdentifier
-        0x3D, // WriteMemoryByAddress
-        0x85, // ControlDTCSetting
-        0x87, // LinkControl
+/** Marker: a link whose state-changing requests are gated. Protocol clients should require this type. */
+interface GatedDiagnosticLink : DiagnosticLink
+
+/**
+ * Allow-list of requests that cannot change ECU state. Everything else needs a [MutationPermit].
+ * Allow-list rather than deny-list: an unknown or manufacturer service is treated as mutating.
+ */
+object ReadOnlyServices {
+    private val readServices = setOf(
+        0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x09, 0x0A, // SAE J1979 read services
+        0x19, // UDS ReadDTCInformation
+        0x22, // UDS ReadDataByIdentifier
+        0x3E, // TesterPresent
+        0x17, 0x18, // KWP2000 ReadStatusOfDTC / ReadDTCByStatus
+        0x1A, // KWP2000 ReadEcuIdentification
+        0x21, // KWP2000 ReadDataByLocalIdentifier
     )
 
-    fun isMutating(payload: ByteArray): Boolean {
-        val sid = payload[0].toInt() and 0xFF
-        if (sid !in ids) return false
-        // DiagnosticSessionControl (0x10) is not listed: default/extended sessions are needed for reads.
-        return true
-    }
+    /** DiagnosticSessionControl sub-functions that only open read sessions (suppress-response bit masked). */
+    private val readSessions = setOf(
+        0x01, // UDS default
+        0x03, // UDS extended
+        0x81, // KWP2000 default diagnostic mode [VERIFY against ISO 14230-3 before KWP support]
+        0x89, // KWP2000 VAG extended diagnostic mode [VERIFY]
+    )
 
-    fun isMutatingSid(sid: Int): Boolean = sid in ids
+    fun isReadOnly(payload: ByteArray): Boolean {
+        val sid = payload[0].toInt() and 0xFF
+        if (sid in readServices) return true
+        if (sid == 0x10 && payload.size >= 2) {
+            val sub = payload[1].toInt() and 0xFF
+            // UDS sub-functions use bit 7 as suppressPosRspMsgIndicationBit; KWP modes use the whole byte.
+            return sub in readSessions || (sub and 0x7F) in setOf(0x01, 0x03)
+        }
+        return false
+    }
 }
