@@ -8,7 +8,16 @@ enum class MileageVerdict {
     /** Every comparable value agrees with the dashboard within the tolerance. */
     CONSISTENT,
 
-    /** At least one module holds a higher mileage than the dashboard: a typical sign of a rolled-back odometer. */
+    /**
+     * Values differ, but not in a way that points at the dashboard: a unit below the dashboard, or a single unit
+     * above it (a used replacement unit keeps its donor car's mileage).
+     */
+    DIFFERENCES,
+
+    /**
+     * Two or more control units hold a higher mileage than the dashboard: a typical sign of a rolled-back
+     * odometer.
+     */
     SUSPICIOUS,
 
     /** Fewer than two comparable distance values: nothing to compare. */
@@ -81,12 +90,23 @@ data class MileageTolerance(val minimumKm: Double = 100.0, val fraction: Double 
 
 /**
  * Pure comparison of counter readings: no I/O, so every rule is unit-tested. The rules:
- * - dashboard present: a module total or an event stamp above it (beyond the tolerance) is suspicious; a
- *   module total below it is reported but is not suspicious on its own;
+ * - dashboard present: a module total or an event stamp above it (beyond the tolerance) is a suspicious
+ *   finding, a module total below it a plain one;
+ * - the verdict is SUSPICIOUS only when suspicious findings come from two or more control units; one unit
+ *   alone (possibly a used replacement) or plain findings give DIFFERENCES;
  * - no dashboard: totals are compared with the highest total, stamps above every total are suspicious;
  * - average speed = reference distance / the first operating-time counter that has a value.
  */
 class MileageAnalyzer(private val tolerance: MileageTolerance = MileageTolerance()) {
+
+    /**
+     * The physical unit behind a reading: its CAN response id when known, so the engine's own UDS counters and its
+     * OBD-II PID A6 answer ("OBD-II (7E8)") count as one unit, not two independent witnesses.
+     */
+    fun unitKey(reading: CounterReading): String {
+        reading.source.ecu?.address?.responseId?.let { return it.toString(16).uppercase() }
+        return OBD_ID.find(reading.module)?.groupValues?.get(1)?.uppercase() ?: reading.module
+    }
 
     fun analyze(readings: List<CounterReading>, notes: List<String> = emptyList()): MileageCheck {
         val ok = readings.filter { it.status == ReadingStatus.OK }
@@ -127,8 +147,10 @@ class MileageAnalyzer(private val tolerance: MileageTolerance = MileageTolerance
 
         // Comparable pairs: the reference plus at least one other distance value.
         val comparable = distances.size >= 2 && reference != null
+        val suspiciousUnits = findings.filter { it.suspicious }.map { unitKey(it.reading) }.toSet()
         val verdict = when {
-            findings.any { it.suspicious } -> MileageVerdict.SUSPICIOUS
+            suspiciousUnits.size >= 2 -> MileageVerdict.SUSPICIOUS
+            findings.isNotEmpty() -> MileageVerdict.DIFFERENCES
             !comparable -> MileageVerdict.NOT_ENOUGH_DATA
             else -> MileageVerdict.CONSISTENT
         }
@@ -139,5 +161,9 @@ class MileageAnalyzer(private val tolerance: MileageTolerance = MileageTolerance
         } else null
 
         return MileageCheck(readings, verdict, dashboard, reference, tol, findings, average, notes)
+    }
+
+    private companion object {
+        val OBD_ID = Regex("""\(([0-9A-Fa-f]+)\)""")
     }
 }

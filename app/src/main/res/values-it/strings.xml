@@ -464,10 +464,7 @@
     <string name="mileage_reading_start">Lettura contatori…</string>
     <string name="mileage_failed">Il controllo chilometri si è interrotto: %1$s</string>
     <string name="mileage_verdict_consistent_title">I chilometri coincidono</string>
-    <string name="mileage_verdict_consistent_body">I %1$d valori di chilometraggio letti coincidono entro %2$s.</string>
     <string name="mileage_verdict_suspicious_title">Possibili chilometri scalati</string>
-    <string name="mileage_verdict_suspicious_body">%1$d valori superano il cruscotto di oltre %2$s. Di norma nessuna centralina registra più chilometri del quadro strumenti: il contachilometri potrebbe essere stato scalato.</string>
-    <string name="mileage_verdict_suspicious_body_no_dashboard">%1$d eventi passati sono stati registrati sopra il chilometraggio più alto che le centraline hanno ora (di oltre %2$s).</string>
     <string name="mileage_verdict_nodata_title">Valori insufficienti per il confronto</string>
     <string name="mileage_verdict_nodata_body">Su questa auto si sono potuti leggere meno di due valori di chilometraggio.</string>
     <string name="mileage_no_dashboard">Il quadro strumenti non ha dato il chilometraggio: le altre centraline sono confrontate con il valore più alto.</string>
@@ -499,4 +496,16 @@
     <string name="mileage_note_snapshot">I chilometri salvati insieme ai codici di errore non vengono letti: il formato del gruppo VW non è pubblico.</string>
     <string name="mileage_note_units">Non si conosce un identificatore pubblico per i chilometri in airbag, gateway, porte o comfort.</string>
     <string name="mileage_obd_module">OBD-II standard (%1$s)</string>
+    <plurals name="mileage_verdict_consistent_body">
+        <item quantity="one">Il valore di chilometraggio letto coincide entro %2$s.</item>
+        <item quantity="many">I %1$d valori di chilometraggio letti coincidono entro %2$s.</item>
+        <item quantity="other">I %1$d valori di chilometraggio letti coincidono entro %2$s.</item>
+    </plurals>
+    <plurals name="mileage_verdict_suspicious_body">
+        <item quantity="one">%1$d centralina registra più chilometri del cruscotto, di oltre %2$s. Di norma nessuna centralina supera il quadro strumenti: il contachilometri potrebbe essere stato scalato.</item>
+        <item quantity="many">%1$d centraline registrano più chilometri del cruscotto, di oltre %2$s. Di norma nessuna centralina supera il quadro strumenti: il contachilometri potrebbe essere stato scalato.</item>
+        <item quantity="other">%1$d centraline registrano più chilometri del cruscotto, di oltre %2$s. Di norma nessuna centralina supera il quadro strumenti: il contachilometri potrebbe essere stato scalato.</item>
+    </plurals>
+    <string name="mileage_verdict_differences_title">Alcuni valori non coincidono</string>
+    <string name="mileage_verdict_differences_body">Non tutti i valori coincidono (vedi le righe evidenziate), ma la differenza riguarda una sola centralina o centraline sotto il cruscotto. Una centralina sostituita tiene i chilometri dell\'auto da cui proviene: da sola non indica chilometri scalati.</string>
 </resources>

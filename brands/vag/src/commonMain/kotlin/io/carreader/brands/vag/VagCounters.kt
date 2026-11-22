@@ -18,7 +18,8 @@ import io.carreader.core.mileage.CounterSource
  * Deliberately left out:
  * - Gateway 710/2A0A "PASSAT_ODO_V2": its row has offset -40 and minimum -40 (a temperature pattern), and the
  *   Audi Q5 set uses the same DID for a battery temperature. Too doubtful to compare.
- * - PQ35-prefixed rows (the platform before MQB) and the "Odometer with ECU installed" row (unit metres in a
+ * - PQ35-prefixed rows (the platform before MQB, e.g. the 16-bit little-endian clutch kiss-point stamps: a byte
+ *   order wrong for a given gearbox turns 12 000 km into 450 600 km and would raise a false alarm) and the "Odometer with ECU installed" row (unit metres in a
  *   24-bit field, at most 16 777 m, so not a lifetime total).
  * - Airbag, door and other units: no OBDb row stores mileage there.
  * - The mileage stamps stored with UDS fault codes (DTC snapshot / extended data): VAG's record layout is not
@@ -47,8 +48,6 @@ object VagCounters : CounterCatalog {
         // Mileage recorded at past events.
         Entry(CounterRole.EVENT_STAMP, VagEcus.ENGINE, "PASSAT_CHAIN_ELONGATION", "Q5_CHAIN_ELONGATION"),
         Entry(CounterRole.EVENT_STAMP, VagEcus.ENGINE, "PASSAT_CHAIN_ELONGATION_INLET", "Q5_CHAIN_ELONGATION_INLET"),
-        Entry(CounterRole.EVENT_STAMP, VagEcus.TRANSMISSION, "PASSAT_PQ35_CLUTCH_1_ADAPT_KISS_POINT_PART_1_ODO_READING", "Q5_PQ35_CLUTCH_1_ADAPT_KISS_POINT_PART_1_ODO_READING"),
-        Entry(CounterRole.EVENT_STAMP, VagEcus.TRANSMISSION, "PASSAT_PQ35_CLUTCH_2_ADAPT_KISS_POINT_PART_1_ODO_READING", "Q5_PQ35_CLUTCH_2_ADAPT_KISS_POINT_PART_1_ODO_READING"),
         Entry(CounterRole.EVENT_STAMP, VagEcus.BRAKES, "PASSAT_BDD_ODO", null),
         Entry(CounterRole.EVENT_STAMP, VagEcus.BRAKES, "PASSAT_TPMS_ODO_RDG_AT_LAST_ADAPT", null),
         Entry(CounterRole.EVENT_STAMP, VagEcus.BRAKES, "PASSAT_TPMS_ODO_RDG_AT_LAST_WARN", null),
@@ -70,7 +69,13 @@ object VagCounters : CounterCatalog {
             val signal: ObdbSignal = when (model) {
                 VagModel.PASSAT -> entry.passatId?.let(passat::get)
                 VagModel.Q5 -> entry.q5Id?.let(q5::get)
-                VagModel.UNKNOWN -> entry.passatId?.let(passat::get) ?: entry.q5Id?.let(q5::get)
+                // Unknown model (no VIN, or Golf, Tiguan, A4...): only rows both tables share with the same
+                // layout. Model-specific DIDs could decode to nonsense on another gearbox or ESC unit.
+                VagModel.UNKNOWN -> {
+                    val p = entry.passatId?.let(passat::get)
+                    val q = entry.q5Id?.let(q5::get)
+                    p.takeIf { p != null && q != null && p.header == q.header && p.did == q.did && p.format == q.format && p.session == q.session }
+                }
             } ?: return@mapNotNull null
             if (signal.header != entry.ecu.address.requestId || !signal.appliesTo(vehicle.modelYear)) return@mapNotNull null
             CounterSource(

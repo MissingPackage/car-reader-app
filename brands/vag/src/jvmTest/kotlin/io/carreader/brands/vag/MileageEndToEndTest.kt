@@ -51,7 +51,7 @@ class MileageEndToEndTest {
         assertEquals(87_409.0, readings.byId("vag.PASSAT_ODO").value)
         assertEquals(87_412.0, readings.byId("vag.PASSAT_ODO_V1").value)
         assertEquals(87_412.0, readings.byId("vag.PASSAT_MQB_TCM_ODO_2").value) // little endian
-        assertEquals(71_350.0, readings.byId("vag.PASSAT_PQ35_CLUTCH_1_ADAPT_KISS_POINT_PART_1_ODO_READING").value)
+        assertTrue(readings.none { "PQ35" in it.source.id }, "pre-MQB rows are not used")
         assertEquals(87_412.0 - 1_900, readings.byId("vag.PASSAT_TPMS_ODO_RDG_AT_LAST_ADAPT").value)
         assertEquals(ReadingStatus.OUT_OF_RANGE, readings.byId("vag.PASSAT_CNT_STEER_SUPPORT_ODO_RDG_OF_LAST_ACT").status)
         assertEquals(2_050.0, readings.byId("vag.PASSAT_DRIVE_TIME").value)
@@ -91,6 +91,17 @@ class MileageEndToEndTest {
         // The chain-elongation inlet DID is not in this car: the unit answers with a negative response.
         assertEquals(ReadingStatus.NOT_SUPPORTED, readings.byId("vag.Q5_CHAIN_ELONGATION_INLET").status)
         assertEquals(MileageVerdict.CONSISTENT, MileageAnalyzer().analyze(readings).verdict)
+    }
+
+    @Test
+    fun unknownModelUsesOnlySharedRows() = runTest {
+        val ids = VagCounters.sources(
+            io.carreader.core.brand.VehicleContext(vin = null, manufacturer = null, canBus = true),
+        ).map { it.id }
+        assertTrue(ids.isNotEmpty())
+        // Rows only in the Passat table (gearbox totals, ABS stamps) are model specific: not offered.
+        assertTrue(ids.none { it.endsWith("ODO_V1") || "TPMS" in it || "BDD" in it }, "$ids")
+        assertTrue("vag.PASSAT_ODO_MILEAGE_HR" in ids && "vag.PASSAT_DRIVE_TIME" in ids, "$ids")
     }
 
     @Test

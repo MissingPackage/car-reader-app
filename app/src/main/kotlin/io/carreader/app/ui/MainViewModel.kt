@@ -550,7 +550,7 @@ class MainViewModel(
                 cancelled = true
                 throw e
             } catch (e: Throwable) {
-                _state.update { it.copy(mileage = it.mileage.copy(error = describe(e))) }
+                if (run == mileageRun) _state.update { it.copy(mileage = it.mileage.copy(error = describe(e))) }
             } finally {
                 if (run != mileageRun) {
                     // A newer check (or a new connection) owns the state now.

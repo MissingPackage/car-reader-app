@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -25,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import io.carreader.app.ui.UiState
 import io.carreader.app.ui.theme.LocalStatusColors
 import io.carreader.core.mileage.CounterReading
 import io.carreader.core.mileage.CounterRole
+import io.carreader.core.mileage.MileageAnalyzer
 import io.carreader.core.mileage.MileageCheck
 import io.carreader.core.mileage.MileageFinding
 import io.carreader.core.mileage.MileageVerdict
@@ -54,7 +57,7 @@ fun MileageScreen(state: UiState, vm: MainViewModel) {
         title = stringResource(R.string.mileage_title),
         onBack = { vm.back() },
         actions = {
-            IconButton(onClick = vm::startMileageCheck, enabled = !m.running) {
+            IconButton(onClick = vm::startMileageCheck, enabled = !m.running && !state.connectionLost) {
                 Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh))
             }
         },
@@ -67,7 +70,7 @@ fun MileageScreen(state: UiState, vm: MainViewModel) {
             Text(stringResource(R.string.mileage_intro), style = MaterialTheme.typography.bodyMedium)
             if (m.running) {
                 Loading(
-                    if (m.expected > 0) stringResource(R.string.mileage_reading, m.readings.size.coerceAtMost(m.expected), m.expected)
+                    if (m.expected > 0) stringResource(R.string.mileage_reading, m.readings.map { it.source.id }.distinct().size.coerceAtMost(m.expected), m.expected)
                     else stringResource(R.string.mileage_reading_start),
                 )
             }
@@ -144,19 +147,24 @@ private fun MileageBody(m: MileageState) {
 @Composable
 private fun VerdictCard(check: MileageCheck) {
     val status = LocalStatusColors.current
-    val suspicious = check.findings.count { it.suspicious }
+    val analyzer = MileageAnalyzer()
+    val suspicious = check.findings.filter { it.suspicious }.map { analyzer.unitKey(it.reading) }.toSet().size
     val comparedKm = check.readings.count { it.status == ReadingStatus.OK && it.source.role != CounterRole.OPERATING_TIME }
     val (icon, color, title, body) = when (check.verdict) {
         MileageVerdict.CONSISTENT -> Quad(
             Icons.Filled.CheckCircle, status.ok,
             stringResource(R.string.mileage_verdict_consistent_title),
-            stringResource(R.string.mileage_verdict_consistent_body, comparedKm, km(check.toleranceKm)),
+            pluralStringResource(R.plurals.mileage_verdict_consistent_body, comparedKm, comparedKm, km(check.toleranceKm)),
+        )
+        MileageVerdict.DIFFERENCES -> Quad(
+            Icons.Filled.Info, status.warn,
+            stringResource(R.string.mileage_verdict_differences_title),
+            stringResource(R.string.mileage_verdict_differences_body),
         )
         MileageVerdict.SUSPICIOUS -> Quad(
             Icons.Filled.Warning, status.bad,
             stringResource(R.string.mileage_verdict_suspicious_title),
-            if (check.dashboardKm != null) stringResource(R.string.mileage_verdict_suspicious_body, suspicious, km(check.toleranceKm))
-            else stringResource(R.string.mileage_verdict_suspicious_body_no_dashboard, suspicious, km(check.toleranceKm)),
+            pluralStringResource(R.plurals.mileage_verdict_suspicious_body, suspicious, suspicious, km(check.toleranceKm)),
         )
         MileageVerdict.NOT_ENOUGH_DATA -> Quad(
             Icons.Filled.Help, MaterialTheme.colorScheme.onSurfaceVariant,

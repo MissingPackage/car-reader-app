@@ -9,6 +9,8 @@ import io.carreader.core.transport.TransportException
 import io.carreader.core.uds.NegativeResponseException
 import io.carreader.core.uds.NoResponseException
 import io.carreader.core.uds.UdsClient
+import io.carreader.core.uds.UdsSession
+import io.carreader.core.brand.EcuProtocol
 import io.carreader.core.uds.UdsTimeoutAdjustable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -58,6 +60,10 @@ class CounterReader(
                         emit(CounterReading(source, module, null, ReadingStatus.NOT_SUPPORTED))
                         continue
                     }
+                    if (origin.ecu.protocol != EcuProtocol.UDS) {
+                        emit(CounterReading(source, module, null, ReadingStatus.NOT_SUPPORTED))
+                        continue
+                    }
                     val present = presence.getOrPut(origin.ecu.address.requestId) { answers(origin.ecu) }
                     if (!present) {
                         emit(CounterReading(source, module, null, ReadingStatus.MODULE_ABSENT))
@@ -68,6 +74,9 @@ class CounterReader(
                 }
             }
         }
+        // Reads may have opened the extended session (0x10 03); hand every unit back in the default one.
+        val touched = sources.mapNotNull { it.ecu }.filter { presence[it.address.requestId] == true }.distinctBy { it.address.requestId }
+        for (ecu in touched) softly { uds.startSession(ecu.address, UdsSession.DEFAULT) }
     }
 
     /** Runs [block]; a lost adapter and cancellation propagate, any other failure gives null. */

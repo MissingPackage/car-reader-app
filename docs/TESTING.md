@@ -34,7 +34,9 @@ was on screen when something went wrong.
 
 - Mileage check: an indication, not proof. Only identifiers published in OBDb are read; mileage stamps stored
   with UDS fault codes, and airbag/gateway/door units, are not read (no public layout). Differences up to
-  max(100 km, 1 %) are treated as normal. Every row shows its source (OBDb table and header/DID, or J1979 PID).
+  max(100 km, 1 %) are treated as normal. "Possible rolled-back odometer" needs two or more units above the
+  dashboard; one unit alone (possibly a used replacement) is shown as "some values differ". Stamps above the
+  readable range (e.g. ABS stamps capped at 200 000 km by OBDb) are not compared. Every row shows its source (OBDb table and header/DID, or J1979 PID).
 
 - The UI is in English with an Italian translation (it follows the phone language). DTC descriptions are
   English only; manufacturer-specific DTCs show their

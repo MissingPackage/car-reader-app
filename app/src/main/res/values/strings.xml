@@ -464,10 +464,7 @@
     <string name="mileage_reading_start">Reading counters…</string>
     <string name="mileage_failed">The mileage check stopped: %1$s</string>
     <string name="mileage_verdict_consistent_title">Mileage values agree</string>
-    <string name="mileage_verdict_consistent_body">The %1$d mileage values read agree within %2$s.</string>
     <string name="mileage_verdict_suspicious_title">Possible rolled-back odometer</string>
-    <string name="mileage_verdict_suspicious_body">%1$d values are higher than the dashboard by more than %2$s. Normally no control unit stores more kilometres than the instrument cluster, so the odometer may have been reduced.</string>
-    <string name="mileage_verdict_suspicious_body_no_dashboard">%1$d past events were recorded above the highest mileage the units hold now (by more than %2$s).</string>
     <string name="mileage_verdict_nodata_title">Not enough values to compare</string>
     <string name="mileage_verdict_nodata_body">Fewer than two mileage values could be read on this car.</string>
     <string name="mileage_no_dashboard">The instrument cluster gave no mileage: the other units are compared with the highest value.</string>
@@ -499,4 +496,14 @@
     <string name="mileage_note_snapshot">Mileage stamps stored with fault codes are not read: the VW group record layout is not public.</string>
     <string name="mileage_note_units">No public identifier is known for a mileage value in the airbag, gateway, door or comfort units.</string>
     <string name="mileage_obd_module">OBD-II standard (%1$s)</string>
+    <plurals name="mileage_verdict_consistent_body">
+        <item quantity="one">The %1$d mileage value read agrees within %2$s.</item>
+        <item quantity="other">The %1$d mileage values read agree within %2$s.</item>
+    </plurals>
+    <plurals name="mileage_verdict_suspicious_body">
+        <item quantity="one">%1$d control unit holds more kilometres than the dashboard, by more than %2$s. Normally no unit stores more than the instrument cluster, so the odometer may have been reduced.</item>
+        <item quantity="other">%1$d control units hold more kilometres than the dashboard, by more than %2$s. Normally no unit stores more than the instrument cluster, so the odometer may have been reduced.</item>
+    </plurals>
+    <string name="mileage_verdict_differences_title">Some values differ</string>
+    <string name="mileage_verdict_differences_body">Not every value matches (see the highlighted rows), but only one unit, or units below the dashboard, disagree. A replaced unit keeps the mileage of its donor car: this alone does not point at a rolled-back odometer.</string>
 </resources>

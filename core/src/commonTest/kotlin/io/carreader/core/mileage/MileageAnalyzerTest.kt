@@ -12,8 +12,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MileageAnalyzerTest {
-    private val ecu = EcuDescriptor("17", "Instruments", EcuAddress(0x714, 0x77E))
-
     private class Item(override val unit: String) : DataItem {
         override val key = "k"
         override val name = "n"
@@ -21,17 +19,25 @@ class MileageAnalyzerTest {
         override fun decode(data: ByteArray): LiveValue = error("unused")
     }
 
-    private fun source(role: CounterRole, id: String = role.name, unit: String = "km", ceiling: Double? = null) = CounterSource(
+    private val units = mutableMapOf<String, EcuDescriptor>()
+
+    /** Each id is its own control unit unless [unit] names a shared one. */
+    private fun ecuFor(id: String) = units.getOrPut(id) {
+        EcuDescriptor(id, id, EcuAddress(0x700 + units.size, 0x760 + units.size))
+    }
+
+    private fun source(role: CounterRole, id: String = role.name, unit: String = "km", ceiling: Double? = null, ecuId: String = id) = CounterSource(
         id = id,
         kind = if (role == CounterRole.OPERATING_TIME) CounterKind.OPERATING_TIME else CounterKind.DISTANCE,
         role = role,
         label = id,
-        origin = CounterOrigin.BrandData(ecu, Item(unit)),
+        origin = CounterOrigin.BrandData(ecuFor(ecuId), Item(unit)),
         provenance = "test",
         ceiling = ceiling,
     )
 
-    private fun ok(role: CounterRole, value: Double, id: String = role.name) = CounterReading(source(role, id), "m", value, ReadingStatus.OK)
+    private fun ok(role: CounterRole, value: Double, id: String = role.name, ecuId: String = id) =
+        CounterReading(source(role, id, ecuId = ecuId), "m", value, ReadingStatus.OK)
     private fun missing(role: CounterRole, status: ReadingStatus) = CounterReading(source(role), "m", null, status)
 
     private val analyzer = MileageAnalyzer()
@@ -57,27 +63,45 @@ class MileageAnalyzerTest {
     }
 
     @Test
-    fun moduleAboveDashboardIsSuspicious() {
-        val check = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 87_412.0)))
+    fun twoUnitsAboveDashboardAreSuspicious() {
+        val check = analyzer.analyze(
+            listOf(ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 87_412.0, "engine"), ok(CounterRole.TOTAL, 87_410.0, "gearbox")),
+        )
         assertEquals(MileageVerdict.SUSPICIOUS, check.verdict)
-        val f = check.findings.single() as MileageFinding.TotalAboveDashboard
+        val f = check.findings.first() as MileageFinding.TotalAboveDashboard
         assertEquals(60_000.0, f.deltaKm, 1e-9)
+    }
+
+    @Test
+    fun oneUnitAboveDashboardIsOnlyADifference() {
+        // A used replacement gearbox keeps its donor car's mileage: one witness is not enough.
+        val check = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 87_412.0)))
+        assertEquals(MileageVerdict.DIFFERENCES, check.verdict)
+        assertTrue(check.findings.single().suspicious)
+        // Two counters of the same unit are still one witness.
+        val sameUnit = analyzer.analyze(
+            listOf(ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 87_412.0, "odo", "engine"), ok(CounterRole.EVENT_STAMP, 61_000.0, "chain", "engine")),
+        )
+        assertEquals(MileageVerdict.DIFFERENCES, sameUnit.verdict)
     }
 
     @Test
     fun stampAboveDashboardIsSuspiciousEvenWhenTotalsAgree() {
         // A tamper that rewrote every running total but forgot an event stamp.
         val check = analyzer.analyze(
-            listOf(ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 27_410.0), ok(CounterRole.EVENT_STAMP, 85_512.0)),
+            listOf(
+                ok(CounterRole.DASHBOARD, 27_412.0), ok(CounterRole.TOTAL, 27_410.0),
+                ok(CounterRole.EVENT_STAMP, 85_512.0, "tpms"), ok(CounterRole.EVENT_STAMP, 61_240.0, "chain"),
+            ),
         )
         assertEquals(MileageVerdict.SUSPICIOUS, check.verdict)
-        assertTrue(check.findings.single() is MileageFinding.StampAboveDashboard)
+        assertTrue(check.findings.all { it is MileageFinding.StampAboveDashboard })
     }
 
     @Test
     fun moduleBelowDashboardIsReportedButNotSuspicious() {
         val check = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 150_000.0), ok(CounterRole.TOTAL, 40_000.0)))
-        assertEquals(MileageVerdict.CONSISTENT, check.verdict)
+        assertEquals(MileageVerdict.DIFFERENCES, check.verdict)
         assertTrue(check.findings.single() is MileageFinding.TotalBelowDashboard)
     }
 
@@ -87,7 +111,7 @@ class MileageAnalyzerTest {
         val low = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 5_000.0), ok(CounterRole.TOTAL, 5_099.0)))
         assertEquals(MileageVerdict.CONSISTENT, low.verdict)
         val lowOver = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 5_000.0), ok(CounterRole.TOTAL, 5_101.0)))
-        assertEquals(MileageVerdict.SUSPICIOUS, lowOver.verdict)
+        assertEquals(MileageVerdict.DIFFERENCES, lowOver.verdict)
         val high = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 200_000.0), ok(CounterRole.TOTAL, 201_999.0)))
         assertEquals(MileageVerdict.CONSISTENT, high.verdict)
     }
@@ -99,7 +123,8 @@ class MileageAnalyzerTest {
                 missing(CounterRole.DASHBOARD, ReadingStatus.MODULE_ABSENT),
                 ok(CounterRole.TOTAL, 87_412.0, "a"),
                 ok(CounterRole.TOTAL, 40_000.0, "b"),
-                ok(CounterRole.EVENT_STAMP, 95_000.0),
+                ok(CounterRole.EVENT_STAMP, 95_000.0, "s1"),
+                ok(CounterRole.EVENT_STAMP, 96_000.0, "s2"),
             ),
         )
         assertNull(check.dashboardKm)
@@ -123,7 +148,7 @@ class MileageAnalyzerTest {
     fun clusterCountersThatDisagreeAreReported() {
         val check = analyzer.analyze(listOf(ok(CounterRole.DASHBOARD, 50_000.0, "hr"), ok(CounterRole.DASHBOARD, 20_000.0, "dash")))
         assertTrue(check.findings.single() is MileageFinding.DashboardsDisagree)
-        assertEquals(MileageVerdict.CONSISTENT, check.verdict)
+        assertEquals(MileageVerdict.DIFFERENCES, check.verdict)
     }
 
     @Test
@@ -152,7 +177,7 @@ class MileageAnalyzerTest {
         assertFailsWith<IllegalArgumentException> { CounterReading(source(CounterRole.TOTAL), "m", null, ReadingStatus.OK) }
         assertFailsWith<IllegalArgumentException> { CounterReading(source(CounterRole.TOTAL), "m", 1.0, ReadingStatus.NOT_RECORDED) }
         assertFailsWith<IllegalArgumentException> {
-            CounterSource("x", CounterKind.DISTANCE, CounterRole.OPERATING_TIME, "x", CounterOrigin.BrandData(ecu, Item("km")), "t")
+            CounterSource("x", CounterKind.DISTANCE, CounterRole.OPERATING_TIME, "x", CounterOrigin.BrandData(ecuFor("x"), Item("km")), "t")
         }
     }
 }
