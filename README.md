@@ -32,7 +32,23 @@ vehicle stationary, engine off, battery ≥ 12 V, a suitable adapter, and an exp
 Every attempt is audited. The app never offers remapping, emission-system changes, odometer or immobilizer
 functions.
 
+## Status
+
+Version 0.1.0: phase 1 (standard OBD-II) and phase 2 for the Volkswagen group. See
+[docs/TESTING.md](docs/TESTING.md) for what is covered and how to field-test, and
+[docs/screenshots](docs/screenshots) for every screen.
+
+Tests run against `sim`, an in-process ELM327/STN adapter and vehicle simulator (VW Passat B8, Audi Q5 FY,
+a K-line petrol car, a clone adapter), plus a timing-faithful adapter model for the driver.
+
+## Data sources
+
+VW group measurements are derived from [OBDb](https://github.com/OBDb) (CC BY-SA 4.0), see
+[brands/vag/ATTRIBUTION.md](brands/vag/ATTRIBUTION.md).
+
 ## Build
 
 JDK 17 and the Android SDK (platform 35). `./gradlew :app:assembleDebug` builds the debug APK;
-`./gradlew jvmTest` runs the core, brand and simulator tests on the JVM.
+`./gradlew :core:jvmTest :sim:jvmTest :brands:vag:jvmTest :app:testDebugUnitTest` runs the tests on the JVM
+(app screens are rendered with Paparazzi). Debug builds are signed with the committed `app/debug.keystore`, so
+new builds install over old ones.
