@@ -228,7 +228,6 @@
     <string name="perm_location_allow">Allow the search</string>
     <string name="location_off">Location is off. On Android 11 and older the search for BLE adapters finds nothing until it is on (the app does not use your position).</string>
     <string name="location_open_settings">Turn on location</string>
-    <string name="dtc_description_english"></string>
     <string name="msg_initializing">Initializing adapter</string>
     <string name="msg_connection_lost">Connection lost: %1$s</string>
     <string name="msg_no_answer_rounds">No answer from the car for %1$s consecutive rounds (ignition off or adapter lost?)</string>

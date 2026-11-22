@@ -30,7 +30,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Screenshots of the main screens in Italian, on a Pixel 5. Each screen is reached by driving the real
+ * Screenshots of the main screens on a Pixel 5. Each screen is reached by driving the real
  * [io.carreader.app.ui.MainViewModel] against the preview Passat; a few states the preview car never produces
  * (a second stored code, a guard warning) are injected into the state or the confirmation port.
  *
@@ -38,7 +38,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 abstract class ScreenshotSuite(night: Boolean) {
-    private val phone = DeviceConfig.PIXEL_5.copy(locale = "it", nightMode = if (night) NightMode.NIGHT else NightMode.NOTNIGHT)
+    private val phone = DeviceConfig.PIXEL_5.copy(nightMode = if (night) NightMode.NIGHT else NightMode.NOTNIGHT)
     private val tallScreens = !night
 
     @get:Rule
@@ -207,6 +207,6 @@ abstract class ScreenshotSuite(night: Boolean) {
     }
 }
 
-class ItalianLightScreenshots : ScreenshotSuite(night = false)
+class LightScreenshots : ScreenshotSuite(night = false)
 
-class ItalianDarkScreenshots : ScreenshotSuite(night = true)
+class DarkScreenshots : ScreenshotSuite(night = true)

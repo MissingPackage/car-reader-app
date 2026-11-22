@@ -22,7 +22,6 @@ class Review2StringsTest {
         }
     }
     private val en by lazy { load("src/main/res/values/strings.xml") }
-    private val it by lazy { load("src/main/res/values-it/strings.xml") }
     private fun nameOf(id: Int): String = R.string::class.java.fields.first { f -> f.getInt(null) == id }.name
     private fun enText(res: TextRes): String {
         var s = en.getValue(nameOf(res.id))
@@ -53,16 +52,5 @@ class Review2StringsTest {
             val app = enText(CoreText.pidNameRes(p.key)!!)
             if (!app.equals(p.name, ignoreCase = true)) println("PID ${p.key} core='${p.name}' app='$app'")
         }
-    }
-
-    @Test fun everyEnglishKeyExistsInItalianWithTheSamePlaceholders() {
-        val ph = Regex("""%(\d+)\$[sd]|%[sd]""")
-        val bad = en.mapNotNull { (k, v) ->
-            val i = it[k] ?: return@mapNotNull (if (k == "app_name") null else "missing it: $k")
-            val a = ph.findAll(v).map { m -> m.value }.toSortedSet()
-            val b = ph.findAll(i).map { m -> m.value }.toSortedSet()
-            if (a != b) "$k en=$a it=$b" else null
-        } + it.keys.filter { k -> k !in en }.map { "only in it: $it" }
-        assertEquals(emptyList<String>(), bad)
     }
 }

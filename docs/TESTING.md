@@ -30,8 +30,8 @@ was on screen when something went wrong.
 
 ## Known limits
 
-- DTC descriptions are in English (Italian UI labels them as such); manufacturer-specific codes show their
-  SAE category and failure type only.
+- The app is in English. Manufacturer-specific DTCs show their
+SAE category and failure type only.
 - The adapter is classified as certified only when it identifies as an STN chip (OBDLink); clones are fine for
   reading.
 - Absent control modules cost about one second each during the scan.
